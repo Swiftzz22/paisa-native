@@ -156,6 +156,9 @@ export type Insights = {
   from: string;
   to: string;
   spent: number;
+  received: number;
+  /** spent - received; negative when more came in than went out. */
+  net: number;
   txCount: number;
   categories: {
     name: string;

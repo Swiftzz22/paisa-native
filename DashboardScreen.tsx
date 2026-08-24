@@ -232,15 +232,35 @@ export function DashboardScreen({
 
             <View style={styles.insightsCard}>
               <Text style={styles.insightsLabel}>
-                Spent {insights?.label ? `· ${insights.label}` : ""}
+                Net {insights?.label ? `· ${insights.label}` : ""}
               </Text>
               <Text style={styles.insightsAmount}>
-                {insights ? inr(insights.spent) : "—"}
+                {insights
+                  ? `${insights.net < 0 ? "+" : ""}${inr(Math.abs(insights.net))}`
+                  : "—"}
               </Text>
               {insights ? (
                 <Text style={styles.insightsSub}>
-                  {insights.txCount} {insights.txCount === 1 ? "transaction" : "transactions"}
+                  {insights.net < 0 ? "more came in than went out · " : ""}
+                  {insights.txCount}{" "}
+                  {insights.txCount === 1 ? "transaction" : "transactions"}
                 </Text>
+              ) : null}
+
+              {insights ? (
+                <View style={styles.flowRow}>
+                  <View style={styles.flowCell}>
+                    <Text style={styles.flowLabel}>Spent</Text>
+                    <Text style={styles.flowSpent}>−{inr(insights.spent)}</Text>
+                  </View>
+                  <View style={styles.flowDivider} />
+                  <View style={styles.flowCell}>
+                    <Text style={styles.flowLabel}>Received</Text>
+                    <Text style={styles.flowReceived}>
+                      +{inr(insights.received)}
+                    </Text>
+                  </View>
+                </View>
               ) : null}
 
               {insightsLoading && !insights ? (
@@ -457,6 +477,19 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   insightsSub: { fontSize: 12, color: C.subtle, marginTop: 2 },
+  flowRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: C.bg,
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 16,
+  },
+  flowCell: { flex: 1, alignItems: "center", gap: 3 },
+  flowDivider: { width: 0.5, alignSelf: "stretch", backgroundColor: C.border },
+  flowLabel: { fontSize: 11, color: C.subtle },
+  flowSpent: { fontSize: 16, fontWeight: "600", color: C.text },
+  flowReceived: { fontSize: 16, fontWeight: "600", color: C.green },
   pieRow: {
     flexDirection: "row",
     alignItems: "center",

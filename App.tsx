@@ -26,6 +26,9 @@ import { TabBar, type TabKey } from "./TabBar";
 /** How long the app can be backgrounded before it re-locks. */
 const LOCK_GRACE_MS = 60_000;
 
+/** Window after a successful unlock during which re-locking is refused. */
+const RELOCK_SUPPRESS_MS = 3_000;
+
 type Phase =
   | { kind: "booting" }
   | { kind: "connect" }
@@ -92,6 +95,7 @@ function BiometricGate({ children }: { children: ReactNode }) {
   const authing = useRef(false);
   const appState = useRef(AppState.currentState);
   const leftAt = useRef<number | null>(null);
+  const unlockedAt = useRef(0);
 
   useEffect(() => {
     shouldLock().then((lock) => setLocked(lock));
@@ -108,12 +112,19 @@ function BiometricGate({ children }: { children: ReactNode }) {
         return;
       }
       if (next === "active" && prev.match(/inactive|background/)) {
-        const away = leftAt.current === null ? Infinity : Date.now() - leftAt.current;
+        const left = leftAt.current;
         leftAt.current = null;
+        // No recorded departure means the app never actually went away: the
+        // transition came from the passcode sheet closing. Reading that as an
+        // infinite absence re-locked the app the instant it unlocked, so a
+        // correct passcode looked like it had failed on the first try.
+        if (left === null) return;
         // Only re-lock after a real absence. Without this, glancing at a
-        // notification or the app switcher re-prompts on every return, which
-        // is what made the lock feel like it was asking constantly.
-        if (away < LOCK_GRACE_MS) return;
+        // notification or the app switcher re-prompts on every return.
+        if (Date.now() - left < LOCK_GRACE_MS) return;
+        // A late event from the auth sheet can still arrive after `authing`
+        // clears, so never re-lock right on the heels of a successful unlock.
+        if (Date.now() - unlockedAt.current < RELOCK_SUPPRESS_MS) return;
         shouldLock().then((lock) => {
           if (lock) setLocked(true);
         });
@@ -126,7 +137,11 @@ function BiometricGate({ children }: { children: ReactNode }) {
     if (authing.current) return;
     authing.current = true;
     try {
-      if (await authenticate()) setLocked(false);
+      if (await authenticate()) {
+        unlockedAt.current = Date.now();
+        leftAt.current = null;
+        setLocked(false);
+      }
     } finally {
       // Keep the guard up briefly so the return-from-prompt event is ignored.
       setTimeout(() => {
