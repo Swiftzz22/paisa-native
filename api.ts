@@ -192,9 +192,14 @@ export type Insights = {
 export type InsightsBundle = Record<Period, Insights>;
 
 export async function fetchInsights(token: string): Promise<InsightsBundle> {
+  // Minutes ahead of UTC (+330 for IST). getTimezoneOffset() reports the
+  // inverse, hence the negation. The server builds period boundaries from this
+  // — without it, "today" would start at 05:30 for a user in India, since
+  // Vercel runs in UTC.
+  const tzOffset = -new Date().getTimezoneOffset();
   const res = await authed<Insights & { periods?: InsightsBundle }>(
     token,
-    "/api/mobile/insights"
+    `/api/mobile/insights?tzOffset=${tzOffset}`
   );
   if (res.periods) return res.periods;
   // Server predates the bundled response — fall back to the single period it
