@@ -95,9 +95,18 @@ async function authed<T>(
   return (await res.json()) as T;
 }
 
+/** Minutes ahead of UTC (+330 for IST); getTimezoneOffset reports the inverse. */
+export function tzOffsetMinutes(): number {
+  return -new Date().getTimezoneOffset();
+}
+
 /** Fetch the dashboard. Throws AuthError on 401 so the UI can re-prompt. */
 export function fetchDashboard(token: string): Promise<Dashboard> {
-  return authed<Dashboard>(token, "/api/mobile/dashboard");
+  // Sent so the hero card's month matches the one Insights uses.
+  return authed<Dashboard>(
+    token,
+    `/api/mobile/dashboard?tzOffset=${tzOffsetMinutes()}`
+  );
 }
 
 /**
@@ -192,14 +201,11 @@ export type Insights = {
 export type InsightsBundle = Record<Period, Insights>;
 
 export async function fetchInsights(token: string): Promise<InsightsBundle> {
-  // Minutes ahead of UTC (+330 for IST). getTimezoneOffset() reports the
-  // inverse, hence the negation. The server builds period boundaries from this
-  // — without it, "today" would start at 05:30 for a user in India, since
-  // Vercel runs in UTC.
-  const tzOffset = -new Date().getTimezoneOffset();
+  // The server builds period boundaries from this — without it "today" would
+  // start at 05:30 for a user in India, since Vercel runs in UTC.
   const res = await authed<Insights & { periods?: InsightsBundle }>(
     token,
-    `/api/mobile/insights?tzOffset=${tzOffset}`
+    `/api/mobile/insights?tzOffset=${tzOffsetMinutes()}`
   );
   if (res.periods) return res.periods;
   // Server predates the bundled response — fall back to the single period it
