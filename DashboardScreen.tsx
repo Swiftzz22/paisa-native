@@ -25,6 +25,8 @@ import {
 import { PieChart } from "./PieChart";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { SegmentedControl } from "./SegmentedControl";
+import { tapLight } from "./haptics";
+import type { Flow } from "./FlowDetailScreen";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -51,11 +53,13 @@ export function DashboardScreen({
   onEdit,
   onNeedAuth,
   onUser,
+  onOpenFlow,
 }: {
   token: string;
   version: number;
   syncing?: boolean;
   lastSync?: SyncResult | null;
+  onOpenFlow?: (flow: Flow) => void;
   onSync?: () => Promise<void>;
   onEdit?: (t: Txn) => void;
   onNeedAuth: () => void;
@@ -265,23 +269,53 @@ export function DashboardScreen({
 
               {insights ? (
                 <View style={styles.flowRow}>
-                  <View style={styles.flowCell}>
+                  <Pressable
+                    onPress={() => {
+                      tapLight();
+                      onOpenFlow?.({
+                        type: "debit",
+                        label: insights.label,
+                        from: insights.from,
+                        to: insights.to,
+                      });
+                    }}
+                    style={({ pressed }) => [
+                      styles.flowCell,
+                      pressed && { opacity: 0.6 },
+                    ]}
+                  >
                     <Text style={styles.flowLabel}>Spent</Text>
                     <AnimatedNumber
                       value={insights.spent}
                       format={(n) => `−${inr(n)}`}
                       style={styles.flowSpent}
                     />
-                  </View>
+                    <Text style={styles.flowHint}>view</Text>
+                  </Pressable>
                   <View style={styles.flowDivider} />
-                  <View style={styles.flowCell}>
+                  <Pressable
+                    onPress={() => {
+                      tapLight();
+                      onOpenFlow?.({
+                        type: "credit",
+                        label: insights.label,
+                        from: insights.from,
+                        to: insights.to,
+                      });
+                    }}
+                    style={({ pressed }) => [
+                      styles.flowCell,
+                      pressed && { opacity: 0.6 },
+                    ]}
+                  >
                     <Text style={styles.flowLabel}>Received</Text>
                     <AnimatedNumber
                       value={insights.received}
                       format={(n) => `+${inr(n)}`}
                       style={styles.flowReceived}
                     />
-                  </View>
+                    <Text style={styles.flowHint}>view</Text>
+                  </Pressable>
                 </View>
               ) : null}
 
@@ -501,6 +535,7 @@ const styles = StyleSheet.create({
   flowCell: { flex: 1, alignItems: "center", gap: 3 },
   flowDivider: { width: 0.5, alignSelf: "stretch", backgroundColor: C.border },
   flowLabel: { fontSize: 11, color: C.subtle },
+  flowHint: { fontSize: 10, color: C.accent, marginTop: 2 },
   flowSpent: { fontSize: 16, fontWeight: "600", color: C.text },
   flowReceived: { fontSize: 16, fontWeight: "600", color: C.green },
   pieRow: {

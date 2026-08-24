@@ -6,8 +6,10 @@ import { C } from "./theme";
 import {
   AuthError,
   clearToken,
+  fetchTransactions,
   getToken,
   syncNow,
+  HISTORY_LIMIT,
   type Dashboard,
   type SyncResult,
   type Txn,
@@ -21,6 +23,7 @@ import { TransactionsScreen } from "./TransactionsScreen";
 import { AskScreen } from "./AskScreen";
 import { SettingsScreen } from "./SettingsScreen";
 import { TransactionModal } from "./TransactionModal";
+import { FlowDetailScreen, type Flow } from "./FlowDetailScreen";
 import { TabBar, type TabKey } from "./TabBar";
 
 /** How long the app can be backgrounded before it re-locks. */
@@ -179,6 +182,15 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
   const [user, setUser] = useState<Dashboard["user"] | null>(null);
+  const [flow, setFlow] = useState<Flow | null>(null);
+
+  // History lives here rather than inside Activity so the spend/income
+  // drill-downs can read the same rows without a second fetch.
+  const [txns, setTxns] = useState<Txn[]>([]);
+  const [txnsCursor, setTxnsCursor] = useState<string | null>(null);
+  const [txnsLoading, setTxnsLoading] = useState(true);
+  const [txnsMore, setTxnsMore] = useState(false);
+  const [txnsError, setTxnsError] = useState<string | null>(null);
 
   const openAdd = useCallback(() => {
     setEditing(null);
@@ -218,6 +230,51 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
     }
   }, [token, signOut]);
 
+  const loadTxns = useCallback(async () => {
+    setTxnsError(null);
+    try {
+      const { items, nextCursor } = await fetchTransactions(
+        token,
+        null,
+        HISTORY_LIMIT
+      );
+      setTxns(items);
+      setTxnsCursor(nextCursor);
+    } catch (e) {
+      if (e instanceof AuthError) return signOut();
+      setTxnsError("Couldn't load transactions.");
+    } finally {
+      setTxnsLoading(false);
+    }
+  }, [token, signOut]);
+
+  const loadMoreTxns = useCallback(async () => {
+    if (!txnsCursor || txnsMore) return;
+    setTxnsMore(true);
+    try {
+      const { items, nextCursor } = await fetchTransactions(
+        token,
+        txnsCursor,
+        HISTORY_LIMIT
+      );
+      setTxns((prev) => [...prev, ...items]);
+      setTxnsCursor(nextCursor);
+    } catch (e) {
+      if (e instanceof AuthError) signOut();
+    } finally {
+      setTxnsMore(false);
+    }
+  }, [token, txnsCursor, txnsMore, signOut]);
+
+  const refreshTxns = useCallback(async () => {
+    await sync();
+    await loadTxns();
+  }, [sync, loadTxns]);
+
+  useEffect(() => {
+    loadTxns();
+  }, [loadTxns, version]);
+
   // Sync once when the app opens.
   useEffect(() => {
     sync();
@@ -237,17 +294,20 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onEdit={openEdit}
               onNeedAuth={signOut}
               onUser={setUser}
+              onOpenFlow={setFlow}
             />
           </TabPane>
         )}
         {visited.has("activity") && (
           <TabPane active={tab === "activity"}>
             <TransactionsScreen
-              token={token}
-              version={version}
-              onSync={sync}
+              items={txns}
+              loading={txnsLoading}
+              loadingMore={txnsMore}
+              error={txnsError}
+              onRefresh={refreshTxns}
+              onLoadMore={loadMoreTxns}
               onEdit={openEdit}
-              onNeedAuth={signOut}
             />
           </TabPane>
         )}
@@ -264,6 +324,16 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
       </View>
 
       <TabBar active={tab} onTab={setTab} onAdd={openAdd} />
+
+      <FlowDetailScreen
+        flow={flow}
+        items={txns}
+        onClose={() => setFlow(null)}
+        onEdit={(t) => {
+          setFlow(null);
+          openEdit(t);
+        }}
+      />
 
       <TransactionModal
         visible={modalOpen}

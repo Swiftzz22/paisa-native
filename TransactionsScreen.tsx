@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -12,16 +12,8 @@ import {
 } from "react-native";
 import { C } from "./theme";
 import { inr, relativeDate, categoryIcon, categoryColor } from "./format";
-import { AuthError, fetchTransactions, type Txn } from "./api";
+import { type Txn } from "./api";
 import { tapSelection } from "./haptics";
-
-/**
- * How much history to hold on-device. A year is only a few hundred rows, so the
- * whole lot fits comfortably in memory and search can run locally with no
- * round-trip per keystroke. Anything older is still reachable by scrolling,
- * which pages it in.
- */
-const HISTORY_LIMIT = 500;
 
 type Filter = "all" | "debit" | "credit";
 
@@ -55,73 +47,31 @@ function matches(t: Txn, needle: string): boolean {
 }
 
 export function TransactionsScreen({
-  token,
-  version,
-  onSync,
+  items,
+  loading,
+  loadingMore,
+  error,
+  onRefresh,
+  onLoadMore,
   onEdit,
-  onNeedAuth,
 }: {
-  token: string;
-  version: number;
-  onSync?: () => Promise<void>;
+  items: Txn[];
+  loading: boolean;
+  loadingMore: boolean;
+  error: string | null;
+  onRefresh: () => Promise<void>;
+  onLoadMore: () => void;
   onEdit?: (t: Txn) => void;
-  onNeedAuth: () => void;
 }) {
-  const [items, setItems] = useState<Txn[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
 
-  const loadFirst = useCallback(async () => {
-    setError(null);
-    try {
-      const { items, nextCursor } = await fetchTransactions(
-        token,
-        null,
-        HISTORY_LIMIT
-      );
-      setItems(items);
-      setCursor(nextCursor);
-    } catch (e) {
-      if (e instanceof AuthError) return onNeedAuth();
-      setError("Couldn't load transactions.");
-    } finally {
-      setLoading(false);
-    }
-  }, [token, onNeedAuth]);
-
-  useEffect(() => {
-    loadFirst();
-  }, [loadFirst, version]);
-
-  const onRefresh = useCallback(async () => {
+  const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    if (onSync) await onSync();
-    await loadFirst();
+    await onRefresh();
     setRefreshing(false);
-  }, [loadFirst, onSync]);
-
-  const loadMore = useCallback(async () => {
-    if (!cursor || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const { items: more, nextCursor } = await fetchTransactions(
-        token,
-        cursor,
-        HISTORY_LIMIT
-      );
-      setItems((prev) => [...prev, ...more]);
-      setCursor(nextCursor);
-    } catch (e) {
-      if (e instanceof AuthError) onNeedAuth();
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [cursor, loadingMore, token, onNeedAuth]);
+  }, [onRefresh]);
 
   // Filtering and grouping run over what's already in memory, so results appear
   // between keystrokes rather than after a request.
@@ -238,9 +188,9 @@ export function TransactionsScreen({
         stickySectionHeadersEnabled
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        onRefresh={onRefresh}
+        onRefresh={handleRefresh}
         refreshing={refreshing}
-        onEndReached={loadMore}
+        onEndReached={onLoadMore}
         onEndReachedThreshold={0.5}
         ListEmptyComponent={
           <Text style={styles.empty}>

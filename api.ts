@@ -100,6 +100,13 @@ export function fetchDashboard(token: string): Promise<Dashboard> {
   return authed<Dashboard>(token, "/api/mobile/dashboard");
 }
 
+/**
+ * How much history to hold on-device. A year is only a few hundred rows, so it
+ * fits comfortably in memory and lets search and the spend/income drill-downs
+ * run locally with no request per interaction.
+ */
+export const HISTORY_LIMIT = 500;
+
 export function fetchTransactions(
   token: string,
   cursor?: string | null,
