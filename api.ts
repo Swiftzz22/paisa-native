@@ -102,10 +102,14 @@ export function fetchDashboard(token: string): Promise<Dashboard> {
 
 export function fetchTransactions(
   token: string,
-  cursor?: string | null
+  cursor?: string | null,
+  limit?: number
 ): Promise<{ items: Txn[]; nextCursor: string | null }> {
-  const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
-  return authed(token, `/api/mobile/transactions${q}`);
+  const params = new URLSearchParams();
+  if (cursor) params.set("cursor", cursor);
+  if (limit) params.set("limit", String(limit));
+  const q = params.toString();
+  return authed(token, `/api/mobile/transactions${q ? `?${q}` : ""}`);
 }
 
 export function fetchMeta(token: string): Promise<Meta> {

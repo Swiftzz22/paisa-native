@@ -163,6 +163,16 @@ function BiometricGate({ children }: { children: ReactNode }) {
 
 function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const [tab, setTab] = useState<TabKey>("home");
+  // Screens mount on first visit and then stay mounted. Rendering only the
+  // active tab tore the others down on every switch, so Activity refetched and
+  // flashed a spinner each time, Home refetched its dashboard and insights, and
+  // Ask lost the whole conversation.
+  const [visited, setVisited] = useState<Set<TabKey>>(() => new Set(["home"]));
+
+  useEffect(() => {
+    setVisited((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
+  }, [tab]);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Txn | null>(null);
   const [version, setVersion] = useState(0);
@@ -216,8 +226,8 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.body}>
-        <FadeIn key={tab}>
-          {tab === "home" && (
+        {visited.has("home") && (
+          <TabPane active={tab === "home"}>
             <DashboardScreen
               token={token}
               version={version}
@@ -228,8 +238,10 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onNeedAuth={signOut}
               onUser={setUser}
             />
-          )}
-          {tab === "activity" && (
+          </TabPane>
+        )}
+        {visited.has("activity") && (
+          <TabPane active={tab === "activity"}>
             <TransactionsScreen
               token={token}
               version={version}
@@ -237,10 +249,18 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onEdit={openEdit}
               onNeedAuth={signOut}
             />
-          )}
-          {tab === "ask" && <AskScreen token={token} onNeedAuth={signOut} />}
-          {tab === "settings" && <SettingsScreen user={user} onSignOut={signOut} />}
-        </FadeIn>
+          </TabPane>
+        )}
+        {visited.has("ask") && (
+          <TabPane active={tab === "ask"}>
+            <AskScreen token={token} onNeedAuth={signOut} />
+          </TabPane>
+        )}
+        {visited.has("settings") && (
+          <TabPane active={tab === "settings"}>
+            <SettingsScreen user={user} onSignOut={signOut} />
+          </TabPane>
+        )}
       </View>
 
       <TabBar active={tab} onTab={setTab} onAdd={openAdd} />
@@ -260,9 +280,26 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
   );
 }
 
+/**
+ * Holds one tab's screen. Inactive panes stay mounted but are removed from
+ * layout, so switching back is instant and keeps scroll position, chat history
+ * and already-fetched data. FadeIn runs on first mount only.
+ */
+function TabPane({ active, children }: { active: boolean; children: ReactNode }) {
+  return (
+    <View
+      style={[StyleSheet.absoluteFill, active ? null : styles.paneHidden]}
+      pointerEvents={active ? "auto" : "none"}
+    >
+      <FadeIn>{children}</FadeIn>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   body: { flex: 1 },
+  paneHidden: { display: "none" },
   boot: {
     flex: 1,
     backgroundColor: C.bg,
