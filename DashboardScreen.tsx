@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -22,7 +23,8 @@ import {
   type Txn,
 } from "./api";
 import { PieChart } from "./PieChart";
-import { tapSelection } from "./haptics";
+import { AnimatedNumber } from "./AnimatedNumber";
+import { SegmentedControl } from "./SegmentedControl";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -67,6 +69,30 @@ export function DashboardScreen({
   const [insightsLoading, setInsightsLoading] = useState(false);
   // Every period arrives in one payload, so switching tabs is local state.
   const insights = bundle ? bundle[period] : null;
+
+  // Re-dissolve the chart whenever the period changes. The numbers count to
+  // their new values separately, so the card reads as one continuous change
+  // rather than a hard swap. Native driver, so it survives a busy JS thread.
+  const chartFade = useRef(new Animated.Value(1)).current;
+  const chartScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    chartFade.setValue(0.35);
+    chartScale.setValue(0.94);
+    Animated.parallel([
+      Animated.timing(chartFade, {
+        toValue: 1,
+        duration: 260,
+        useNativeDriver: true,
+      }),
+      Animated.spring(chartScale, {
+        toValue: 1,
+        speed: 18,
+        bounciness: 5,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [period, chartFade, chartScale]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -202,39 +228,11 @@ export function DashboardScreen({
           <View style={{ marginTop: 24 }}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Insights</Text>
-              <View style={styles.segment}>
-                {PERIODS.map((p) => {
-                  const active = period === p.key;
-                  return (
-                    <Pressable
-                      key={p.key}
-                      onPress={() => {
-                        if (!active) tapSelection();
-                        setPeriod(p.key);
-                      }}
-                      hitSlop={6}
-                      // React to the touch itself, not just the state change —
-                      // with no pressed feedback the control read as dead even
-                      // when it was working.
-                      style={({ pressed }) => [
-                        styles.segmentItem,
-                        active && styles.segmentItemActive,
-                        pressed && !active && styles.segmentItemPressed,
-                        pressed && { opacity: 0.75 },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.segmentLabel,
-                          active && styles.segmentLabelActive,
-                        ]}
-                      >
-                        {p.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <SegmentedControl
+                items={PERIODS}
+                value={period}
+                onChange={setPeriod}
+              />
             </View>
 
             <View
@@ -248,11 +246,15 @@ export function DashboardScreen({
               <Text style={styles.insightsLabel}>
                 Net {insights?.label ? `· ${insights.label}` : ""}
               </Text>
-              <Text style={styles.insightsAmount}>
-                {insights
-                  ? `${insights.net < 0 ? "+" : ""}${inr(Math.abs(insights.net))}`
-                  : "—"}
-              </Text>
+              {insights ? (
+                <AnimatedNumber
+                  value={insights.net}
+                  format={(n) => `${n < 0 ? "+" : ""}${inr(Math.abs(n))}`}
+                  style={styles.insightsAmount}
+                />
+              ) : (
+                <Text style={styles.insightsAmount}>—</Text>
+              )}
               {insights ? (
                 <Text style={styles.insightsSub}>
                   {insights.net < 0 ? "more came in than went out · " : ""}
@@ -265,14 +267,20 @@ export function DashboardScreen({
                 <View style={styles.flowRow}>
                   <View style={styles.flowCell}>
                     <Text style={styles.flowLabel}>Spent</Text>
-                    <Text style={styles.flowSpent}>−{inr(insights.spent)}</Text>
+                    <AnimatedNumber
+                      value={insights.spent}
+                      format={(n) => `−${inr(n)}`}
+                      style={styles.flowSpent}
+                    />
                   </View>
                   <View style={styles.flowDivider} />
                   <View style={styles.flowCell}>
                     <Text style={styles.flowLabel}>Received</Text>
-                    <Text style={styles.flowReceived}>
-                      +{inr(insights.received)}
-                    </Text>
+                    <AnimatedNumber
+                      value={insights.received}
+                      format={(n) => `+${inr(n)}`}
+                      style={styles.flowReceived}
+                    />
                   </View>
                 </View>
               ) : null}
@@ -287,7 +295,12 @@ export function DashboardScreen({
                 </Text>
               ) : insights ? (
                 <>
-                  <View style={styles.pieRow}>
+                  <Animated.View
+                    style={[
+                      styles.pieRow,
+                      { opacity: chartFade, transform: [{ scale: chartScale }] },
+                    ]}
+                  >
                     <PieChart
                       data={insights.categories.map((c) => ({
                         key: c.name,
@@ -314,7 +327,7 @@ export function DashboardScreen({
                         </Text>
                       ) : null}
                     </View>
-                  </View>
+                  </Animated.View>
 
                   {insights.paymentModes.length > 0 ? (
                     <View style={styles.modesBlock}>
@@ -461,21 +474,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  segment: {
-    flexDirection: "row",
-    backgroundColor: C.card,
-    borderRadius: 10,
-    padding: 3,
-  },
-  segmentItem: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  segmentItemActive: { backgroundColor: C.accent },
-  segmentItemPressed: { backgroundColor: C.card2 },
-  segmentLabel: { fontSize: 12, color: C.muted, fontWeight: "500" },
-  segmentLabelActive: { color: "#fff" },
   insightsCard: {
     backgroundColor: C.card,
     borderRadius: 20,
