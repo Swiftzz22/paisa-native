@@ -19,6 +19,8 @@ export type Flow = {
   label: string;
   from: string;
   to: string;
+  /** Narrow to one category — set when opened from a pie slice or legend row. */
+  category?: string;
 };
 
 /**
@@ -45,6 +47,7 @@ export function FlowDetailScreen({
 
     const matching = items.filter((t) => {
       if (t.type !== flow.type) return false;
+      if (flow.category && t.category !== flow.category) return false;
       const at = new Date(t.occurredAt).getTime();
       return at >= from && at <= to;
     });
@@ -83,7 +86,9 @@ export function FlowDetailScreen({
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.title}>{credit ? "Received" : "Spent"}</Text>
+            <Text style={styles.title}>
+              {flow?.category ?? (credit ? "Received" : "Spent")}
+            </Text>
             <Text style={styles.subtitle}>
               {flow?.label} · {count} {count === 1 ? "transaction" : "transactions"}
             </Text>
@@ -146,7 +151,7 @@ export function FlowDetailScreen({
                   {t.merchant}
                 </Text>
                 <Text style={styles.txnSub} numberOfLines={1}>
-                  {relativeDate(t.occurredAt)} · {t.paymentMode}
+                  {relativeDate(t.occurredAt, t.timeKnown)} · {t.paymentMode}
                 </Text>
               </View>
               <Text style={[styles.txnAmt, credit && { color: C.green }]}>

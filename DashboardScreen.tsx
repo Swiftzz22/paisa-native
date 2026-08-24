@@ -17,12 +17,16 @@ import {
   fetchDashboard,
   fetchInsights,
   type Dashboard,
+  type Insights,
   type InsightsBundle,
+  type MonthlyBar,
   type Period,
   type SyncResult,
   type Txn,
 } from "./api";
 import { PieChart } from "./PieChart";
+import { MonthlyTrend } from "./MonthlyTrend";
+import { CustomRangeSheet, type CustomRange } from "./CustomRangeSheet";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
@@ -44,6 +48,102 @@ const PERIODS: { key: Period; label: string }[] = [
   { key: "year", label: "Year" },
 ];
 
+const FALLBACK_COLORS = [
+  "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4",
+  "#ec4899", "#14b8a6", "#84cc16", "#eab308", "#6366f1", "#71717a",
+];
+
+const PAYMENT_LABELS: Record<string, string> = {
+  card: "Card",
+  cash: "Cash",
+  upi: "UPI",
+  bank_transfer: "Bank transfer",
+};
+const PAYMENT_COLORS: Record<string, string> = {
+  card: "#3b82f6",
+  upi: "#22c55e",
+  cash: "#f59e0b",
+  bank_transfer: "#a855f7",
+};
+
+function rangeLabel(from: Date, to: Date): string {
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const one = (d: Date) => `${d.getDate()} ${M[d.getMonth()]}`;
+  const sameYear = from.getFullYear() === to.getFullYear();
+  return sameYear
+    ? `${one(from)} – ${one(to)} ${to.getFullYear()}`
+    : `${one(from)} ${from.getFullYear()} – ${one(to)} ${to.getFullYear()}`;
+}
+
+/**
+ * Build the same shape the server returns, but for an arbitrary window and from
+ * the history already on the device — so a custom range costs no request.
+ * Colours are borrowed from the year's breakdown so a category keeps the colour
+ * it has everywhere else.
+ */
+function summarizeRange(
+  items: Txn[],
+  from: Date,
+  to: Date,
+  colorOf: (name: string) => string
+): Insights {
+  const inRange = items.filter((t) => {
+    const at = new Date(t.occurredAt).getTime();
+    return at >= from.getTime() && at <= to.getTime();
+  });
+
+  let spent = 0;
+  let received = 0;
+  const cats = new Map<string, { amount: number; txCount: number }>();
+  const modes = new Map<string, { amount: number; txCount: number }>();
+  for (const t of inRange) {
+    if (t.type === "credit") {
+      received += t.amount;
+      continue;
+    }
+    spent += t.amount;
+    const c = cats.get(t.category) ?? { amount: 0, txCount: 0 };
+    c.amount += t.amount;
+    c.txCount++;
+    cats.set(t.category, c);
+    const m = modes.get(t.paymentMode) ?? { amount: 0, txCount: 0 };
+    m.amount += t.amount;
+    m.txCount++;
+    modes.set(t.paymentMode, m);
+  }
+  const denom = spent || 1;
+
+  return {
+    period: "month",
+    label: rangeLabel(from, to),
+    from: from.toISOString(),
+    to: to.toISOString(),
+    spent: Math.round(spent),
+    received: Math.round(received),
+    net: Math.round(spent - received),
+    txCount: inRange.length,
+    categories: Array.from(cats.entries())
+      .sort((a, b) => b[1].amount - a[1].amount)
+      .map(([name, v]) => ({
+        name,
+        amount: Math.round(v.amount),
+        pct: Math.round((v.amount / denom) * 100),
+        color: colorOf(name),
+        txCount: v.txCount,
+      })),
+    paymentModes: Array.from(modes.entries())
+      .sort((a, b) => b[1].amount - a[1].amount)
+      .map(([mode, v]) => ({
+        mode,
+        label: PAYMENT_LABELS[mode] ?? mode,
+        amount: Math.round(v.amount),
+        pct: Math.round((v.amount / denom) * 100),
+        color: PAYMENT_COLORS[mode] ?? "#71717a",
+        txCount: v.txCount,
+      })),
+  };
+}
+
 export function DashboardScreen({
   token,
   version,
@@ -54,9 +154,12 @@ export function DashboardScreen({
   onNeedAuth,
   onUser,
   onOpenFlow,
+  items,
 }: {
   token: string;
   version: number;
+  /** History held by the shell — lets a custom range be summarised locally. */
+  items: Txn[];
   syncing?: boolean;
   lastSync?: SyncResult | null;
   onOpenFlow?: (flow: Flow) => void;
@@ -71,8 +174,45 @@ export function DashboardScreen({
   const [period, setPeriod] = useState<Period>("month");
   const [bundle, setBundle] = useState<InsightsBundle | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
-  // Every period arrives in one payload, so switching tabs is local state.
-  const insights = bundle ? bundle[period] : null;
+  const [monthly, setMonthly] = useState<MonthlyBar[]>([]);
+  const [showAllCats, setShowAllCats] = useState(false);
+  const [custom, setCustom] = useState<CustomRange | null>(null);
+  const [rangeSheet, setRangeSheet] = useState(false);
+
+  const colorOf = useCallback(
+    (name: string) => {
+      const known = bundle?.year.categories.find((c) => c.name === name);
+      if (known) return known.color;
+      // Stable per name, so an unseen category does not flicker between renders.
+      let h = 0;
+      for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
+      return FALLBACK_COLORS[Math.abs(h) % FALLBACK_COLORS.length];
+    },
+    [bundle]
+  );
+
+  // Every period arrives in one payload, so switching tabs is local state. A
+  // custom window is summarised from the history already on the device.
+  const insights = custom
+    ? summarizeRange(items, custom.from, custom.to, colorOf)
+    : bundle
+      ? bundle[period]
+      : null;
+
+  const openCategory = useCallback(
+    (category: string) => {
+      if (!insights) return;
+      tapLight();
+      onOpenFlow?.({
+        type: "debit",
+        label: insights.label,
+        from: insights.from,
+        to: insights.to,
+        category,
+      });
+    },
+    [insights, onOpenFlow]
+  );
 
   // Re-dissolve the chart whenever the period changes. The numbers count to
   // their new values separately, so the card reads as one continuous change
@@ -113,7 +253,9 @@ export function DashboardScreen({
   const loadInsights = useCallback(async () => {
     setInsightsLoading(true);
     try {
-      setBundle(await fetchInsights(token));
+      const payload = await fetchInsights(token);
+      setBundle(payload.periods);
+      setMonthly(payload.monthly);
     } catch (e) {
       if (e instanceof AuthError) return onNeedAuth();
       // Non-fatal — the rest of the dashboard still renders.
@@ -235,9 +377,48 @@ export function DashboardScreen({
               <SegmentedControl
                 items={PERIODS}
                 value={period}
-                onChange={setPeriod}
+                onChange={(p) => {
+                  setCustom(null);
+                  setPeriod(p);
+                }}
               />
             </View>
+
+            <Pressable
+              onPress={() => {
+                tapLight();
+                setRangeSheet(true);
+              }}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.customRow,
+                pressed && { opacity: 0.6 },
+              ]}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={13}
+                color={custom ? C.accent : C.subtle}
+              />
+              <Text
+                style={[styles.customLabel, custom && { color: C.accent }]}
+              >
+                {custom ? insights?.label ?? "Custom range" : "Custom range"}
+              </Text>
+              {custom ? (
+                <Pressable
+                  onPress={() => {
+                    tapLight();
+                    setCustom(null);
+                  }}
+                  hitSlop={10}
+                >
+                  <Ionicons name="close-circle" size={15} color={C.subtle} />
+                </Pressable>
+              ) : (
+                <Ionicons name="chevron-forward" size={13} color={C.subtle} />
+              )}
+            </Pressable>
 
             <View
               style={[
@@ -344,21 +525,44 @@ export function DashboardScreen({
                       size={160}
                       thickness={22}
                       trackColor={C.bg}
+                      onSlicePress={openCategory}
                     />
                     <View style={styles.pieLegend}>
-                      {insights.categories.slice(0, 5).map((c) => (
-                        <View key={c.name} style={styles.legendRow}>
+                      {(showAllCats
+                        ? insights.categories
+                        : insights.categories.slice(0, 5)
+                      ).map((c) => (
+                        <Pressable
+                          key={c.name}
+                          onPress={() => openCategory(c.name)}
+                          hitSlop={4}
+                          style={({ pressed }) => [
+                            styles.legendRow,
+                            pressed && { opacity: 0.55 },
+                          ]}
+                        >
                           <View style={[styles.legendDot, { backgroundColor: c.color }]} />
                           <Text style={styles.legendName} numberOfLines={1}>
                             {c.name}
                           </Text>
                           <Text style={styles.legendPct}>{c.pct}%</Text>
-                        </View>
+                        </Pressable>
                       ))}
                       {insights.categories.length > 5 ? (
-                        <Text style={styles.legendMore}>
-                          +{insights.categories.length - 5} more
-                        </Text>
+                        <Pressable
+                          onPress={() => {
+                            tapLight();
+                            setShowAllCats((v) => !v);
+                          }}
+                          hitSlop={6}
+                          style={({ pressed }) => pressed && { opacity: 0.6 }}
+                        >
+                          <Text style={styles.legendMore}>
+                            {showAllCats
+                              ? "Show less"
+                              : `Show all ${insights.categories.length}`}
+                          </Text>
+                        </Pressable>
                       ) : null}
                     </View>
                   </Animated.View>
@@ -381,6 +585,18 @@ export function DashboardScreen({
               ) : null}
             </View>
           </View>
+
+          <MonthlyTrend data={monthly} />
+
+          <CustomRangeSheet
+            visible={rangeSheet}
+            initial={custom}
+            onClose={() => setRangeSheet(false)}
+            onApply={(r) => {
+              setCustom(r);
+              setRangeSheet(false);
+            }}
+          />
 
           <View style={{ marginTop: 24 }}>
             <Text style={styles.sectionTitle}>Where it went (this month)</Text>
@@ -435,7 +651,7 @@ export function DashboardScreen({
                           {t.merchant}
                         </Text>
                         <Text style={styles.txnSub} numberOfLines={1}>
-                          {t.category} · {relativeDate(t.occurredAt)}
+                          {t.category} · {relativeDate(t.occurredAt, t.timeKnown)}
                         </Text>
                       </View>
                       <Text style={[styles.txnAmt, credit && { color: C.green }]}>
@@ -508,6 +724,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  customRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-end",
+    paddingTop: 8,
+  },
+  customLabel: { fontSize: 12, color: C.subtle },
   insightsCard: {
     backgroundColor: C.card,
     borderRadius: 20,

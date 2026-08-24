@@ -1,5 +1,6 @@
 import { View } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
+import { tapLight } from "./haptics";
 
 export type PieSlice = {
   key: string;
@@ -17,11 +18,14 @@ export function PieChart({
   size = 180,
   thickness = 22,
   trackColor = "#1a1a1a",
+  onSlicePress,
 }: {
   data: PieSlice[];
   size?: number;
   thickness?: number;
   trackColor?: string;
+  /** Called with the slice's key when it is tapped. */
+  onSlicePress?: (key: string) => void;
 }) {
   const cx = size / 2;
   const cy = size / 2;
@@ -67,6 +71,14 @@ export function PieChart({
                   endFrac={endFrac}
                   stroke={slice.color}
                   strokeWidth={thickness}
+                  onPress={
+                    onSlicePress
+                      ? () => {
+                          tapLight();
+                          onSlicePress(slice.key);
+                        }
+                      : undefined
+                  }
                 />
               );
             })}
@@ -85,6 +97,7 @@ function ArcPath({
   endFrac,
   stroke,
   strokeWidth,
+  onPress,
 }: {
   cx: number;
   cy: number;
@@ -93,6 +106,7 @@ function ArcPath({
   endFrac: number;
   stroke: string;
   strokeWidth: number;
+  onPress?: () => void;
 }) {
   const startAngle = startFrac * Math.PI * 2 - Math.PI / 2;
   const endAngle = endFrac * Math.PI * 2 - Math.PI / 2;
@@ -109,6 +123,7 @@ function ArcPath({
       strokeWidth={strokeWidth}
       fill="none"
       strokeLinecap="butt"
+      onPress={onPress}
     />
   );
 }

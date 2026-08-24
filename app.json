@@ -37,7 +37,8 @@
         {
           "faceIDPermission": "Use Face ID to unlock paisa and keep your finances private."
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

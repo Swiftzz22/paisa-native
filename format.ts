@@ -30,7 +30,7 @@ function absoluteDate(d: Date, now: Date): string {
  * label ("3 days ago") hides exactly the detail needed to spot a mis-dated
  * transaction.
  */
-export function relativeDate(iso: string): string {
+export function relativeDate(iso: string, timeKnown = true): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const now = new Date();
@@ -38,9 +38,13 @@ export function relativeDate(iso: string): string {
     new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const days = Math.round((startOf(now) - startOf(d)) / 86_400_000);
 
-  if (days === 0) return `Today, ${clockTime(d)}`;
-  if (days === 1) return `Yesterday, ${clockTime(d)}`;
-  return `${absoluteDate(d, now)}, ${clockTime(d)}`;
+  // Statement imports and date-only entries store noon as a placeholder.
+  // Printing it as "12:00 pm" invents a precision that was never recorded, so
+  // those rows show the date alone.
+  const time = timeKnown ? `, ${clockTime(d)}` : "";
+  if (days === 0) return `Today${time}`;
+  if (days === 1) return `Yesterday${time}`;
+  return `${absoluteDate(d, now)}${time}`;
 }
 
 const PALETTE = [

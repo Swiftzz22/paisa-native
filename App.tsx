@@ -295,6 +295,7 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onNeedAuth={signOut}
               onUser={setUser}
               onOpenFlow={setFlow}
+              items={txns}
             />
           </TabPane>
         )}

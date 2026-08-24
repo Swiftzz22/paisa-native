@@ -25,6 +25,7 @@ export type Dashboard = {
     type: "debit" | "credit";
     paymentMode: string;
     occurredAt: string;
+    timeKnown?: boolean;
   }[];
 };
 
@@ -50,6 +51,11 @@ export type Txn = {
   paymentMode: string;
   note?: string | null;
   occurredAt: string;
+  /**
+   * False when the stored time is a date-only placeholder — statement imports
+   * and the web's date form record noon rather than a real moment.
+   */
+  timeKnown?: boolean;
 };
 
 export type Meta = {
@@ -197,21 +203,31 @@ export type Insights = {
   }[];
 };
 
+export type MonthlyBar = { key: string; label: string; total: number };
+
 /** All four periods in one payload, so switching tabs needs no network. */
 export type InsightsBundle = Record<Period, Insights>;
 
-export async function fetchInsights(token: string): Promise<InsightsBundle> {
+export type InsightsPayload = {
+  periods: InsightsBundle;
+  /** Twelve months of spending, oldest first, for the trend chart. */
+  monthly: MonthlyBar[];
+};
+
+export async function fetchInsights(token: string): Promise<InsightsPayload> {
   // The server builds period boundaries from this — without it "today" would
   // start at 05:30 for a user in India, since Vercel runs in UTC.
-  const res = await authed<Insights & { periods?: InsightsBundle }>(
-    token,
-    `/api/mobile/insights?tzOffset=${tzOffsetMinutes()}`
-  );
-  if (res.periods) return res.periods;
+  const res = await authed<
+    Insights & { periods?: InsightsBundle; monthly?: MonthlyBar[] }
+  >(token, `/api/mobile/insights?tzOffset=${tzOffsetMinutes()}`);
+  if (res.periods) return { periods: res.periods, monthly: res.monthly ?? [] };
   // Server predates the bundled response — fall back to the single period it
   // returned so the screen still renders something sensible.
   const single = res as Insights;
-  return { day: single, week: single, month: single, year: single };
+  return {
+    periods: { day: single, week: single, month: single, year: single },
+    monthly: [],
+  };
 }
 
 export type SyncResult = {

@@ -233,7 +233,7 @@ export function TransactionsScreen({
                   {t.merchant}
                 </Text>
                 <Text style={styles.txnSub} numberOfLines={1}>
-                  {t.category} · {relativeDate(t.occurredAt)} · {t.paymentMode}
+                  {t.category} · {relativeDate(t.occurredAt, t.timeKnown)} · {t.paymentMode}
                 </Text>
               </View>
               <Text style={[styles.txnAmt, credit && { color: C.green }]}>
