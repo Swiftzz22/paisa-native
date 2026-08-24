@@ -177,8 +177,19 @@ export type Insights = {
   }[];
 };
 
-export function fetchInsights(token: string, period: Period): Promise<Insights> {
-  return authed<Insights>(token, `/api/mobile/insights?period=${period}`);
+/** All four periods in one payload, so switching tabs needs no network. */
+export type InsightsBundle = Record<Period, Insights>;
+
+export async function fetchInsights(token: string): Promise<InsightsBundle> {
+  const res = await authed<Insights & { periods?: InsightsBundle }>(
+    token,
+    "/api/mobile/insights"
+  );
+  if (res.periods) return res.periods;
+  // Server predates the bundled response — fall back to the single period it
+  // returned so the screen still renders something sensible.
+  const single = res as Insights;
+  return { day: single, week: single, month: single, year: single };
 }
 
 export type SyncResult = {

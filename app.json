@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "paisa-native",
+    "name": "paisa",
     "slug": "paisa-native",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,10 @@
     "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.saniakothari.paisa"
+      "bundleIdentifier": "com.saniakothari.paisa",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.saniakothari.paisa",
@@ -41,9 +44,14 @@
         "projectId": "8f9660e5-42d9-4c77-b097-0336f170c1ed"
       }
     },
-    "runtimeVersion": "exposdk:54.0.0",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
     "updates": {
-      "url": "https://u.expo.dev/8f9660e5-42d9-4c77-b097-0336f170c1ed"
-    }
+      "url": "https://u.expo.dev/8f9660e5-42d9-4c77-b097-0336f170c1ed",
+      "fallbackToCacheTimeout": 0
+    },
+    "owner": "sania_kothari",
+    "backgroundColor": "#0a0a0a"
   }
 }

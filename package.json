@@ -24,7 +24,12 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:dev": "eas build --platform ios --profile development",
+    "build:preview": "eas build --platform ios --profile preview",
+    "build:prod": "eas build --platform ios --profile production",
+    "submit": "eas submit --platform ios --profile production --latest",
+    "ota": "eas update --channel production"
   },
   "private": true
 }

@@ -16,7 +16,7 @@ import {
   fetchDashboard,
   fetchInsights,
   type Dashboard,
-  type Insights,
+  type InsightsBundle,
   type Period,
   type SyncResult,
   type Txn,
@@ -63,8 +63,10 @@ export function DashboardScreen({
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
-  const [insights, setInsights] = useState<Insights | null>(null);
+  const [bundle, setBundle] = useState<InsightsBundle | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
+  // Every period arrives in one payload, so switching tabs is local state.
+  const insights = bundle ? bundle[period] : null;
 
   const load = useCallback(async () => {
     setError(null);
@@ -78,29 +80,25 @@ export function DashboardScreen({
     }
   }, [token, onNeedAuth, onUser]);
 
-  const loadInsights = useCallback(
-    async (p: Period) => {
-      setInsightsLoading(true);
-      try {
-        const i = await fetchInsights(token, p);
-        setInsights(i);
-      } catch (e) {
-        if (e instanceof AuthError) return onNeedAuth();
-        // Non-fatal — the rest of the dashboard still renders.
-      } finally {
-        setInsightsLoading(false);
-      }
-    },
-    [token, onNeedAuth]
-  );
+  const loadInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    try {
+      setBundle(await fetchInsights(token));
+    } catch (e) {
+      if (e instanceof AuthError) return onNeedAuth();
+      // Non-fatal — the rest of the dashboard still renders.
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [token, onNeedAuth]);
 
   useEffect(() => {
     load();
   }, [load, version]);
 
   useEffect(() => {
-    loadInsights(period);
-  }, [loadInsights, period, version]);
+    loadInsights();
+  }, [loadInsights, version]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -214,7 +212,16 @@ export function DashboardScreen({
                         if (!active) tapSelection();
                         setPeriod(p.key);
                       }}
-                      style={[styles.segmentItem, active && styles.segmentItemActive]}
+                      hitSlop={6}
+                      // React to the touch itself, not just the state change —
+                      // with no pressed feedback the control read as dead even
+                      // when it was working.
+                      style={({ pressed }) => [
+                        styles.segmentItem,
+                        active && styles.segmentItemActive,
+                        pressed && !active && styles.segmentItemPressed,
+                        pressed && { opacity: 0.75 },
+                      ]}
                     >
                       <Text
                         style={[
@@ -230,7 +237,14 @@ export function DashboardScreen({
               </View>
             </View>
 
-            <View style={styles.insightsCard}>
+            <View
+              style={[
+                styles.insightsCard,
+                // Dim on refresh rather than freezing the old numbers with no
+                // indication anything is happening.
+                insightsLoading && insights ? { opacity: 0.55 } : null,
+              ]}
+            >
               <Text style={styles.insightsLabel}>
                 Net {insights?.label ? `· ${insights.label}` : ""}
               </Text>
@@ -459,6 +473,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   segmentItemActive: { backgroundColor: C.accent },
+  segmentItemPressed: { backgroundColor: C.card2 },
   segmentLabel: { fontSize: 12, color: C.muted, fontWeight: "500" },
   segmentLabelActive: { color: "#fff" },
   insightsCard: {
