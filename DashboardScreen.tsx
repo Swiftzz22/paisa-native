@@ -619,27 +619,49 @@ export function DashboardScreen({
           />
 
           <View style={{ marginTop: 24 }}>
-            <Text style={styles.sectionTitle}>Where it went (this month)</Text>
+            <View style={styles.sectionRow}>
+              <Text style={styles.sectionTitle}>Where it went</Text>
+              {insights ? (
+                <Text style={styles.sectionMeta}>{insights.label}</Text>
+              ) : null}
+            </View>
             <View style={{ marginTop: 14 }}>
-              {data.categories.length === 0 ? (
-                <Text style={styles.empty}>No spending this month yet.</Text>
+              {!insights || insights.categories.length === 0 ? (
+                <Text style={styles.empty}>No spending in this period.</Text>
               ) : (
-                data.categories.map((c) => (
-                  <View key={c.name} style={styles.catRow}>
-                    <View style={[styles.dot, { backgroundColor: c.color }]} />
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.catTop}>
-                        <Text style={styles.catName}>{c.name}</Text>
-                        <Text style={styles.catAmt}>{inr(c.amount)}</Text>
+                // Bars are relative to the biggest category, so the smallest
+                // stays visible instead of collapsing to nothing.
+                insights.categories.map((c) => {
+                  const widest = insights.categories[0].amount || 1;
+                  const w = Math.max(3, Math.round((c.amount / widest) * 100));
+                  return (
+                    <Pressable
+                      key={c.name}
+                      onPress={() => openCategory(c.name)}
+                      hitSlop={4}
+                      style={({ pressed }) => [
+                        styles.catRow,
+                        pressed && { opacity: 0.55 },
+                      ]}
+                    >
+                      <View style={[styles.dot, { backgroundColor: c.color }]} />
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.catTop}>
+                          <Text style={styles.catName}>{c.name}</Text>
+                          <Text style={styles.catAmt}>{inr(c.amount)}</Text>
+                        </View>
+                        <View style={styles.catTrack}>
+                          <View
+                            style={[
+                              styles.catFill,
+                              { width: `${w}%`, backgroundColor: c.color },
+                            ]}
+                          />
+                        </View>
                       </View>
-                      <View style={styles.catTrack}>
-                        <View
-                          style={[styles.catFill, { width: `${c.pct}%`, backgroundColor: c.color }]}
-                        />
-                      </View>
-                    </View>
-                  </View>
-                ))
+                    </Pressable>
+                  );
+                })
               )}
             </View>
           </View>
@@ -752,6 +774,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   customLabel: { fontSize: 12, color: C.subtle },
+  sectionMeta: { fontSize: 12, color: C.subtle },
   insightsCard: {
     backgroundColor: C.card,
     borderRadius: 20,
