@@ -199,6 +199,26 @@ export function DashboardScreen({
       ? bundle[period]
       : null;
 
+  /**
+   * Open a month's breakdown from the trend chart. The key is "YYYY-MM" in the
+   * device's own timezone — the same one the server bucketed by — so the range
+   * can be rebuilt here without asking for it.
+   */
+  const openMonth = useCallback(
+    (bar: MonthlyBar) => {
+      const [y, m] = bar.key.split("-").map(Number);
+      tapLight();
+      onOpenFlow?.({
+        type: "debit",
+        label: `${bar.label} ${y}`,
+        from: new Date(y, m - 1, 1, 0, 0, 0, 0).toISOString(),
+        to: new Date(y, m, 0, 23, 59, 59, 999).toISOString(),
+        expectedTotal: bar.total,
+      });
+    },
+    [onOpenFlow]
+  );
+
   const openCategory = useCallback(
     (category: string) => {
       if (!insights) return;
@@ -586,7 +606,7 @@ export function DashboardScreen({
             </View>
           </View>
 
-          <MonthlyTrend data={monthly} />
+          <MonthlyTrend data={monthly} onMonthPress={openMonth} />
 
           <CustomRangeSheet
             visible={rangeSheet}

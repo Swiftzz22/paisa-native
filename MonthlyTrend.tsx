@@ -12,7 +12,14 @@ import type { MonthlyBar } from "./api";
  * is its own touch target. Tapping a bar names the month and its total instead
  * of relying on a tooltip, which has no hover to hang off on a phone.
  */
-export function MonthlyTrend({ data }: { data: MonthlyBar[] }) {
+export function MonthlyTrend({
+  data,
+  onMonthPress,
+}: {
+  data: MonthlyBar[];
+  /** Opens that month's breakdown. */
+  onMonthPress?: (bar: MonthlyBar) => void;
+}) {
   const [picked, setPicked] = useState<string | null>(null);
 
   if (data.length === 0) return null;
@@ -32,6 +39,7 @@ export function MonthlyTrend({ data }: { data: MonthlyBar[] }) {
           </Text>
         ) : null}
       </View>
+      <Text style={styles.hint}>Tap a month to see where it went.</Text>
 
       {allEmpty ? (
         <Text style={styles.empty}>No spending in the last 12 months.</Text>
@@ -47,7 +55,9 @@ export function MonthlyTrend({ data }: { data: MonthlyBar[] }) {
                 key={m.key}
                 onPress={() => {
                   tapSelection();
-                  setPicked(m.key === picked ? null : m.key);
+                  setPicked(m.key);
+                  // Months with nothing in them have no breakdown to show.
+                  if (m.total > 0) onMonthPress?.(m);
                 }}
                 hitSlop={4}
                 style={styles.col}
@@ -92,8 +102,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "baseline",
     justifyContent: "space-between",
-    marginBottom: 14,
+    marginBottom: 4,
   },
+  hint: { fontSize: 11, color: C.subtle, marginBottom: 12 },
   title: { fontSize: 13, color: C.muted },
   readout: { fontSize: 13, color: C.text, fontWeight: "600" },
   empty: { fontSize: 13, color: C.subtle, paddingVertical: 20 },

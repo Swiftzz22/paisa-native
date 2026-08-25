@@ -21,6 +21,13 @@ export type Flow = {
   to: string;
   /** Narrow to one category — set when opened from a pie slice or legend row. */
   category?: string;
+  /**
+   * What the caller's own figure says this period totals. The trend chart is
+   * built server-side from everything, while this sheet filters the history
+   * held on the device — so an older month can legitimately have rows missing.
+   * Set it and the sheet will say so rather than quietly under-reporting.
+   */
+  expectedTotal?: number;
 };
 
 /**
@@ -75,6 +82,11 @@ export function FlowDetailScreen({
   }, [flow, items]);
 
   const credit = flow?.type === "credit";
+  // The bar total is rounded server-side while this sums raw amounts, so a few
+  // rupees of drift is arithmetic, not missing data. Only flag a real gap.
+  const gap =
+    flow?.expectedTotal != null ? Math.round(flow.expectedTotal - total) : 0;
+  const shortfall = gap > 10 ? gap : 0;
 
   return (
     <Modal
@@ -111,6 +123,12 @@ export function FlowDetailScreen({
             across {sections.length}{" "}
             {sections.length === 1 ? "category" : "categories"}
           </Text>
+          {shortfall > 0 ? (
+            <Text style={styles.shortfall}>
+              {inr(shortfall)} more is in this month but not yet loaded — scroll
+              Activity to the bottom to pull in older transactions.
+            </Text>
+          ) : null}
         </View>
 
         <SectionList
@@ -184,6 +202,7 @@ const styles = StyleSheet.create({
   },
   totalAmount: { fontSize: 30, fontWeight: "700", color: C.text },
   totalLabel: { fontSize: 12, color: C.subtle, marginTop: 2 },
+  shortfall: { fontSize: 11, color: C.red, marginTop: 8, lineHeight: 15 },
   list: { paddingHorizontal: 18, paddingBottom: 24 },
   empty: { color: C.subtle, fontSize: 14, textAlign: "center", marginTop: 40 },
   sectionHeader: {
