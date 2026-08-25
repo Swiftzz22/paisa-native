@@ -3,6 +3,25 @@ export function inr(n: number): string {
   return "₹" + Math.abs(Math.round(n)).toLocaleString("en-IN");
 }
 
+/**
+ * "2.4L" · "22k" · "450" — short enough to sit above a bar in a twelve-month
+ * chart, where a full ₹2,43,488 would never fit. Uses lakh, since that is how
+ * the figures are read here.
+ */
+export function inrCompact(n: number): string {
+  const v = Math.abs(Math.round(n));
+  if (v === 0) return "—";
+  if (v >= 100_000) {
+    const l = v / 100_000;
+    return `${l >= 10 ? Math.round(l) : l.toFixed(1)}L`;
+  }
+  if (v >= 1_000) {
+    const k = v / 1_000;
+    return `${k >= 10 ? Math.round(k) : k.toFixed(1)}k`;
+  }
+  return String(v);
+}
+
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",

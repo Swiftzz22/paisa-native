@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { C } from "./theme";
-import { inr } from "./format";
+import { inr, inrCompact } from "./format";
 import { tapSelection } from "./haptics";
 import type { MonthlyBar } from "./api";
 
@@ -52,6 +52,12 @@ export function MonthlyTrend({ data }: { data: MonthlyBar[] }) {
                 hitSlop={4}
                 style={styles.col}
               >
+                <Text
+                  style={[styles.value, active && { color: C.text }]}
+                  numberOfLines={1}
+                >
+                  {inrCompact(m.total)}
+                </Text>
                 <View
                   style={[
                     styles.bar,
@@ -95,10 +101,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     justifyContent: "space-between",
-    height: 122,
-    gap: 4,
+    height: 140,
+    gap: 3,
   },
   col: { flex: 1, alignItems: "center", justifyContent: "flex-end", height: "100%" },
   bar: { width: "100%", borderRadius: 4, minHeight: 2 },
+  // 8px keeps "2.4L" inside a twelve-column layout on a narrow phone.
+  value: { fontSize: 8, color: C.subtle, marginBottom: 4 },
   tick: { fontSize: 9, color: C.subtle, marginTop: 6 },
 });
