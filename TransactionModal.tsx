@@ -25,6 +25,7 @@ import {
   type Txn,
 } from "./api";
 import { notifySuccess, notifyError } from "./haptics";
+import { CategoryPicker } from "./CategoryPicker";
 
 /** Add a new transaction, or edit/delete an existing one when `editing` is set. */
 export function TransactionModal({
@@ -51,6 +52,7 @@ export function TransactionModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // Load category / payment-mode options once.
   useEffect(() => {
@@ -84,6 +86,8 @@ export function TransactionModal({
 
   const amountNum = parseFloat(amount);
   const valid = amountNum > 0 && !!merchant.trim() && !!categoryId && !!paymentMode;
+  const categoryLabel =
+    meta?.categories.find((c) => c.id === categoryId)?.label ?? null;
   const busy = saving || deleting;
 
   async function save() {
@@ -150,6 +154,25 @@ export function TransactionModal({
               <Text style={styles.title}>
                 {editing ? "Edit transaction" : "Add transaction"}
               </Text>
+              {/* Delete used to sit below Save, past every category chip — a
+                  full scroll away from the row you had just tapped. */}
+              {editing ? (
+                <Pressable
+                  onPress={confirmDelete}
+                  disabled={busy}
+                  hitSlop={10}
+                  style={({ pressed }) => [
+                    styles.headerAction,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  {deleting ? (
+                    <ActivityIndicator size="small" color={C.red} />
+                  ) : (
+                    <Ionicons name="trash-outline" size={21} color={C.red} />
+                  )}
+                </Pressable>
+              ) : null}
               <Pressable onPress={onClose} hitSlop={10}>
                 <Ionicons name="close" size={24} color={C.muted} />
               </Pressable>
@@ -160,7 +183,11 @@ export function TransactionModal({
                 <ActivityIndicator color={C.accent} />
               </View>
             ) : (
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <ScrollView
+                style={styles.body}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+              >
                 <View style={styles.typeToggle}>
                   {(["debit", "credit"] as const).map((t) => (
                     <Pressable
@@ -197,21 +224,24 @@ export function TransactionModal({
                 />
 
                 <Text style={styles.label}>Category</Text>
-                <View style={styles.chips}>
-                  {meta.categories.map((c) => (
-                    <Pressable
-                      key={c.id}
-                      style={[styles.chip, categoryId === c.id && styles.chipActive]}
-                      onPress={() => setCategoryId(c.id)}
-                    >
-                      <Text
-                        style={[styles.chipText, categoryId === c.id && styles.chipTextActive]}
-                      >
-                        {c.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
+                <Pressable
+                  onPress={() => setPickerOpen(true)}
+                  style={({ pressed }) => [
+                    styles.select,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.selectValue,
+                      !categoryLabel && { color: C.subtle },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {categoryLabel ?? "Choose a category"}
+                  </Text>
+                  <Ionicons name="chevron-forward" size={17} color={C.subtle} />
+                </Pressable>
 
                 <Text style={styles.label}>Payment mode</Text>
                 <View style={styles.chips}>
@@ -235,40 +265,36 @@ export function TransactionModal({
 
                 {error ? <Text style={styles.error}>{error}</Text> : null}
 
-                <Pressable
-                  style={[styles.save, (!valid || busy) && styles.saveDisabled]}
-                  onPress={save}
-                  disabled={!valid || busy}
-                >
-                  {saving ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.saveText}>
-                      {editing ? "Save changes" : "Save transaction"}
-                    </Text>
-                  )}
-                </Pressable>
-
-                {editing ? (
-                  <Pressable
-                    style={styles.delete}
-                    onPress={confirmDelete}
-                    disabled={busy}
-                  >
-                    {deleting ? (
-                      <ActivityIndicator color={C.red} />
-                    ) : (
-                      <>
-                        <Ionicons name="trash-outline" size={18} color={C.red} />
-                        <Text style={styles.deleteText}>Delete transaction</Text>
-                      </>
-                    )}
-                  </Pressable>
-                ) : null}
-
-                <View style={{ height: 12 }} />
+                <View style={{ height: 8 }} />
               </ScrollView>
             )}
+
+            {/* Pinned, so saving never depends on how far you have scrolled. */}
+            {meta ? (
+              <Pressable
+                style={[styles.save, (!valid || busy) && styles.saveDisabled]}
+                onPress={save}
+                disabled={!valid || busy}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.saveText}>
+                    {editing ? "Save changes" : "Save transaction"}
+                  </Text>
+                )}
+              </Pressable>
+            ) : null}
+
+            {meta ? (
+              <CategoryPicker
+                visible={pickerOpen}
+                options={meta.categories}
+                selectedId={categoryId}
+                onSelect={setCategoryId}
+                onClose={() => setPickerOpen(false)}
+              />
+            ) : null}
           </View>
         </KeyboardAvoidingView>
       </View>
@@ -303,8 +329,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 16,
   },
-  title: { fontSize: 18, fontWeight: "700", color: C.text },
+  title: { flex: 1, fontSize: 20, fontWeight: "700", color: C.text },
+  headerAction: { marginRight: 18 },
+  select: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: C.card,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    minHeight: 50,
+  },
+  selectValue: { flex: 1, fontSize: 16, color: C.text },
   loading: { paddingVertical: 60, alignItems: "center" },
+  // Lets the scrolling area give way so the pinned Save button always fits,
+  // whatever the screen height.
+  body: { flexShrink: 1 },
   typeToggle: {
     flexDirection: "row",
     gap: 5,
@@ -358,7 +398,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: "#fff", fontWeight: "500" },
   error: { color: C.red, fontSize: 13, marginTop: 16 },
   save: {
-    marginTop: 24,
+    marginTop: 12,
     height: 52,
     borderRadius: 14,
     backgroundColor: C.accent,
@@ -367,17 +407,4 @@ const styles = StyleSheet.create({
   },
   saveDisabled: { opacity: 0.4 },
   saveText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  delete: {
-    marginTop: 12,
-    height: 50,
-    borderRadius: 14,
-    borderWidth: 0.5,
-    borderColor: C.border,
-    backgroundColor: C.card,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  deleteText: { color: C.red, fontSize: 15, fontWeight: "500" },
 });
