@@ -27,6 +27,7 @@ import {
 import { PieChart } from "./PieChart";
 import { MonthlyTrend } from "./MonthlyTrend";
 import { CustomRangeSheet, type CustomRange } from "./CustomRangeSheet";
+import { GettingStarted } from "./GettingStarted";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
@@ -154,8 +155,11 @@ export function DashboardScreen({
   onNeedAuth,
   onUser,
   onOpenFlow,
+  onAdd,
   items,
 }: {
+  /** Opens the add-transaction sheet from the empty state. */
+  onAdd?: () => void;
   token: string;
   version: number;
   /** History held by the shell — lets a custom range be summarised locally. */
@@ -346,7 +350,14 @@ export function DashboardScreen({
         </Text>
       ) : null}
 
-      {data ? (
+      {data && data.recent.length === 0 ? (
+        <GettingStarted
+          emailConnected={data.emailConnected ?? false}
+          onAdd={() => onAdd?.()}
+        />
+      ) : null}
+
+      {data && data.recent.length > 0 ? (
         <>
           <View style={styles.hero}>
             <Text style={styles.heroLabel}>Spent in {data.monthLabel}</Text>

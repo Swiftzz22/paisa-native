@@ -5,6 +5,8 @@ const TOKEN_KEY = "paisa_mobile_token";
 
 export type Dashboard = {
   user: { name: string | null; email: string };
+  /** Whether a Gmail account is linked, so an empty screen can explain itself. */
+  emailConnected?: boolean;
   monthLabel: string;
   spent: number;
   deltaPercent: number; // fraction, e.g. -0.12

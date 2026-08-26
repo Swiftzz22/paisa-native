@@ -3,6 +3,25 @@ import * as SecureStore from "expo-secure-store";
 import Constants, { ExecutionEnvironment } from "expo-constants";
 
 const PREF_KEY = "paisa_biometric_lock";
+const INTRO_KEY = "paisa_seen_intro";
+
+/** Whether the one-time intro has already been shown on this device. */
+export async function hasSeenIntro(): Promise<boolean> {
+  try {
+    return (await SecureStore.getItemAsync(INTRO_KEY)) === "1";
+  } catch {
+    // Storage unavailable — better to skip the intro than to loop on it.
+    return true;
+  }
+}
+
+export async function markIntroSeen(): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(INTRO_KEY, "1");
+  } catch {
+    // Non-fatal: the worst case is seeing the intro twice.
+  }
+}
 
 /**
  * Face ID does not work inside Expo Go on iOS — Apple ties it to the host app's

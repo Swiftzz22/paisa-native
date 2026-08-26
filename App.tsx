@@ -14,8 +14,9 @@ import {
   type SyncResult,
   type Txn,
 } from "./api";
-import { authenticate, shouldLock } from "./biometrics";
+import { authenticate, hasSeenIntro, markIntroSeen, shouldLock } from "./biometrics";
 import { ConnectScreen } from "./ConnectScreen";
+import { WelcomeScreen } from "./WelcomeScreen";
 import { LockScreen } from "./LockScreen";
 import { FadeIn } from "./FadeIn";
 import { DashboardScreen } from "./DashboardScreen";
@@ -34,6 +35,7 @@ const RELOCK_SUPPRESS_MS = 3_000;
 
 type Phase =
   | { kind: "booting" }
+  | { kind: "intro" }
   | { kind: "connect" }
   | { kind: "main"; token: string };
 
@@ -41,9 +43,12 @@ export default function App() {
   const [state, setState] = useState<Phase>({ kind: "booting" });
 
   useEffect(() => {
-    getToken().then((t) =>
-      setState(t ? { kind: "main", token: t } : { kind: "connect" })
-    );
+    (async () => {
+      const token = await getToken();
+      if (token) return setState({ kind: "main", token });
+      // Explain what paisa. is before asking anyone to sign in to it.
+      setState((await hasSeenIntro()) ? { kind: "connect" } : { kind: "intro" });
+    })();
   }, []);
 
   // NOTE: no auto-update check here. expo-updates' checkForUpdateAsync /
@@ -65,6 +70,20 @@ export default function App() {
         <View style={styles.boot}>
           <ActivityIndicator color={C.accent} />
         </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  if (state.kind === "intro") {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <WelcomeScreen
+          onDone={() => {
+            markIntroSeen();
+            setState({ kind: "connect" });
+          }}
+        />
       </SafeAreaProvider>
     );
   }
@@ -295,6 +314,7 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onNeedAuth={signOut}
               onUser={setUser}
               onOpenFlow={setFlow}
+              onAdd={openAdd}
               items={txns}
             />
           </TabPane>
