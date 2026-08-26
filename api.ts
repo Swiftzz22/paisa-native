@@ -207,6 +207,27 @@ export type Insights = {
 
 export type MonthlyBar = { key: string; label: string; total: number };
 
+/**
+ * Authoritative summary for an arbitrary window. The app computes one locally
+ * for an instant result, but only holds recent history — this covers the rest.
+ */
+export async function fetchRangeInsights(
+  token: string,
+  from: Date,
+  to: Date
+): Promise<Insights> {
+  const q = new URLSearchParams({
+    tzOffset: String(tzOffsetMinutes()),
+    from: from.toISOString(),
+    to: to.toISOString(),
+  });
+  const res = await authed<{ range: Insights }>(
+    token,
+    `/api/mobile/insights?${q.toString()}`
+  );
+  return res.range;
+}
+
 /** All four periods in one payload, so switching tabs needs no network. */
 export type InsightsBundle = Record<Period, Insights>;
 

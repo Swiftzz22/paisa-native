@@ -5,6 +5,30 @@ import Constants, { ExecutionEnvironment } from "expo-constants";
 const PREF_KEY = "paisa_biometric_lock";
 const INTRO_KEY = "paisa_seen_intro";
 
+const SYNCED_KEY = "paisa_last_sync_at";
+
+/** How long an open-the-app sync stays good for. */
+const SYNC_FRESH_MS = 15 * 60_000;
+
+/** True when a sync ran recently enough that another would be wasted work. */
+export async function syncedRecently(): Promise<boolean> {
+  try {
+    const raw = await SecureStore.getItemAsync(SYNCED_KEY);
+    if (!raw) return false;
+    return Date.now() - Number(raw) < SYNC_FRESH_MS;
+  } catch {
+    return false;
+  }
+}
+
+export async function markSynced(): Promise<void> {
+  try {
+    await SecureStore.setItemAsync(SYNCED_KEY, String(Date.now()));
+  } catch {
+    // Non-fatal: the worst case is syncing on the next open too.
+  }
+}
+
 /** Whether the one-time intro has already been shown on this device. */
 export async function hasSeenIntro(): Promise<boolean> {
   try {

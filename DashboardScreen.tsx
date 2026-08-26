@@ -16,6 +16,7 @@ import {
   AuthError,
   fetchDashboard,
   fetchInsights,
+  fetchRangeInsights,
   type Dashboard,
   type Insights,
   type InsightsBundle,
@@ -181,6 +182,7 @@ export function DashboardScreen({
   const [monthly, setMonthly] = useState<MonthlyBar[]>([]);
   const [showAllCats, setShowAllCats] = useState(false);
   const [custom, setCustom] = useState<CustomRange | null>(null);
+  const [serverCustom, setServerCustom] = useState<Insights | null>(null);
   const [rangeSheet, setRangeSheet] = useState(false);
 
   const colorOf = useCallback(
@@ -195,33 +197,53 @@ export function DashboardScreen({
     [bundle]
   );
 
-  // Every period arrives in one payload, so switching tabs is local state. A
-  // custom window is summarised from the history already on the device.
-  const insights = custom
+  // Every period arrives in one payload, so switching tabs is local state.
+  //
+  // A custom window is summarised on the device first, which is instant but
+  // only sees the history held locally. The server's answer for the same window
+  // replaces it as soon as it lands, so the numbers end up complete.
+  const localCustom = custom
     ? summarizeRange(items, custom.from, custom.to, colorOf)
+    : null;
+  const insights = custom
+    ? serverCustom ?? localCustom
     : bundle
       ? bundle[period]
       : null;
 
-  /**
-   * Open a month's breakdown from the trend chart. The key is "YYYY-MM" in the
-   * device's own timezone — the same one the server bucketed by — so the range
-   * can be rebuilt here without asking for it.
-   */
-  const openMonth = useCallback(
-    (bar: MonthlyBar) => {
-      const [y, m] = bar.key.split("-").map(Number);
-      tapLight();
-      onOpenFlow?.({
-        type: "debit",
-        label: `${bar.label} ${y}`,
-        from: new Date(y, m - 1, 1, 0, 0, 0, 0).toISOString(),
-        to: new Date(y, m, 0, 23, 59, 59, 999).toISOString(),
-        expectedTotal: bar.total,
+  useEffect(() => {
+    if (!custom) {
+      setServerCustom(null);
+      return;
+    }
+    let cancelled = false;
+    setServerCustom(null);
+    fetchRangeInsights(token, custom.from, custom.to)
+      .then((r) => {
+        if (!cancelled) setServerCustom(r);
+      })
+      .catch(() => {
+        // Keep the local summary; it is right for everything recent.
       });
-    },
-    [onOpenFlow]
-  );
+    return () => {
+      cancelled = true;
+    };
+  }, [custom, token]);
+
+  /**
+   * Narrow the whole card to one month from the trend chart, rather than
+   * opening a separate sheet — the pie and the category list then describe the
+   * month you tapped. The key is "YYYY-MM" in the device's own timezone, the
+   * same one the server bucketed by, so the range is rebuilt here for free.
+   */
+  const openMonth = useCallback((bar: MonthlyBar) => {
+    const [y, m] = bar.key.split("-").map(Number);
+    tapLight();
+    setCustom({
+      from: new Date(y, m - 1, 1, 0, 0, 0, 0),
+      to: new Date(y, m, 0, 23, 59, 59, 999),
+    });
+  }, []);
 
   const openCategory = useCallback(
     (category: string) => {
@@ -617,7 +639,13 @@ export function DashboardScreen({
             </View>
           </View>
 
-          <MonthlyTrend data={monthly} onMonthPress={openMonth} />
+          {/* A twelve-month trend only means something against a yearly view;
+              beside a Day or Week figure it was just noise. Stays visible after
+              picking a month so you can step through them and watch the
+              breakdown above follow along. */}
+          {period === "year" ? (
+            <MonthlyTrend data={monthly} onMonthPress={openMonth} />
+          ) : null}
 
           <CustomRangeSheet
             visible={rangeSheet}

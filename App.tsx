@@ -14,7 +14,14 @@ import {
   type SyncResult,
   type Txn,
 } from "./api";
-import { authenticate, hasSeenIntro, markIntroSeen, shouldLock } from "./biometrics";
+import {
+  authenticate,
+  hasSeenIntro,
+  markIntroSeen,
+  markSynced,
+  shouldLock,
+  syncedRecently,
+} from "./biometrics";
 import { ConnectScreen } from "./ConnectScreen";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { LockScreen } from "./LockScreen";
@@ -285,8 +292,10 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
     }
   }, [token, txnsCursor, txnsMore, signOut]);
 
+  // Pull-to-refresh always syncs — an explicit request should never be skipped.
   const refreshTxns = useCallback(async () => {
     await sync();
+    markSynced();
     await loadTxns();
   }, [sync, loadTxns]);
 
@@ -294,9 +303,19 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
     loadTxns();
   }, [loadTxns, version]);
 
-  // Sync once when the app opens.
+  // Sync on open, but not on every open.
+  //
+  // A sync fetches Gmail and runs a parse batch — by far the heaviest call the
+  // app makes, and it was firing on every unlock, so the screen sat waiting on
+  // work that had usually just been done. A cron already sweeps server-side
+  // every half hour, so anything more often than this buys nothing. Pull to
+  // refresh still forces one immediately.
   useEffect(() => {
-    sync();
+    (async () => {
+      if (await syncedRecently()) return;
+      await sync();
+      markSynced();
+    })();
   }, [sync]);
 
   return (
@@ -309,7 +328,7 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               version={version}
               syncing={syncing}
               lastSync={lastSync}
-              onSync={sync}
+              onSync={refreshTxns}
               onEdit={openEdit}
               onNeedAuth={signOut}
               onUser={setUser}
