@@ -253,6 +253,21 @@ export async function fetchInsights(token: string): Promise<InsightsPayload> {
   };
 }
 
+/**
+ * Permanently delete the account. Apple requires this to be reachable from
+ * inside the app. `confirmEmail` must match the signed-in address — the server
+ * checks it too, so a mistaken tap cannot get through.
+ */
+export function deleteAccount(
+  token: string,
+  confirmEmail: string
+): Promise<{ ok: true; transactions: number; emails: number }> {
+  return authed(token, "/api/mobile/account", {
+    method: "DELETE",
+    body: JSON.stringify({ confirmEmail }),
+  });
+}
+
 export type SyncResult = {
   fetched: number;
   parsed: number;

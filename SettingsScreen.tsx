@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,8 +12,9 @@ import {
   View,
 } from "react-native";
 import { C } from "./theme";
-import { API_BASE, type Dashboard } from "./api";
+import { API_BASE, deleteAccount, type Dashboard } from "./api";
 import { biometricLabel, getLockEnabled, isBiometricAvailable, setLockEnabled } from "./biometrics";
+import { notifyError, notifySuccess } from "./haptics";
 
 const WEB_LINKS: { icon: string; label: string; path: string }[] = [
   { icon: "grid-outline", label: "Categories", path: "/settings/categories" },
@@ -23,14 +25,17 @@ const WEB_LINKS: { icon: string; label: string; path: string }[] = [
 
 export function SettingsScreen({
   user,
+  token,
   onSignOut,
 }: {
   user: Dashboard["user"] | null;
+  token: string;
   onSignOut: () => void;
 }) {
   const [bioAvailable, setBioAvailable] = useState(false);
   const [lockOn, setLockOn] = useState(true);
   const [bioLabel, setBioLabel] = useState("Face ID");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -53,6 +58,73 @@ export function SettingsScreen({
       { text: "Cancel", style: "cancel" },
       { text: "Sign out", style: "destructive", onPress: onSignOut },
     ]);
+  }
+
+  /**
+   * Two deliberate steps: a warning that names what is lost, then typing the
+   * account's own email. Deletion is immediate and there is no backup, so a
+   * single mis-tap must not be able to reach it.
+   */
+  function confirmDelete() {
+    const email = user?.email;
+    if (!email) return;
+
+    Alert.alert(
+      "Delete your account?",
+      "Every transaction, stored bank email and setting is removed permanently. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            // Alert.prompt is iOS-only. Rather than a button that silently does
+            // nothing on Android, send them to the same flow on the web.
+            if (Platform.OS !== "ios") {
+              Linking.openURL(`${API_BASE}/settings/delete-account`);
+              return;
+            }
+            Alert.prompt(
+              "Type your email to confirm",
+              email,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete forever",
+                  style: "destructive",
+                  onPress: async (typed?: string) => {
+                    if ((typed ?? "").trim().toLowerCase() !== email.toLowerCase()) {
+                      Alert.alert(
+                        "That didn't match",
+                        "Nothing was deleted."
+                      );
+                      return;
+                    }
+                    setDeleting(true);
+                    try {
+                      await deleteAccount(token, email);
+                      notifySuccess();
+                      // The account is gone; drop the local token and return
+                      // to the connect screen.
+                      onSignOut();
+                    } catch (e) {
+                      notifyError();
+                      Alert.alert(
+                        "Couldn't delete the account",
+                        e instanceof Error ? e.message : "Please try again."
+                      );
+                    } finally {
+                      setDeleting(false);
+                    }
+                  },
+                },
+              ],
+              "plain-text"
+            );
+          },
+        },
+      ]
+    );
   }
 
   return (
@@ -117,6 +189,26 @@ export function SettingsScreen({
       <Pressable style={styles.signOut} onPress={confirmSignOut}>
         <Ionicons name="log-out-outline" size={20} color={C.red} />
         <Text style={styles.signOutText}>Sign out</Text>
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.deleteRow, pressed && { opacity: 0.6 }]}
+        onPress={confirmDelete}
+        disabled={deleting || !user?.email}
+      >
+        <Text style={styles.deleteText}>
+          {deleting ? "Deleting…" : "Delete account"}
+        </Text>
+      </Pressable>
+      <Text style={styles.deleteHint}>
+        Removes every transaction, stored email and setting. Permanent.
+      </Text>
+
+      <Pressable
+        onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
+        style={({ pressed }) => pressed && { opacity: 0.6 }}
+      >
+        <Text style={styles.privacy}>Privacy policy</Text>
       </Pressable>
 
       <Text style={styles.footer}>paisa · connected to {API_BASE.replace("https://", "")}</Text>
@@ -195,5 +287,21 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
   },
   signOutText: { color: C.red, fontSize: 15, fontWeight: "500" },
+  deleteRow: { alignItems: "center", paddingTop: 22, paddingBottom: 4 },
+  deleteText: { color: C.red, fontSize: 14, fontWeight: "500" },
+  deleteHint: {
+    color: C.subtle,
+    fontSize: 11,
+    textAlign: "center",
+    paddingHorizontal: 30,
+    lineHeight: 16,
+  },
+  privacy: {
+    color: C.muted,
+    fontSize: 12,
+    textAlign: "center",
+    paddingTop: 20,
+    textDecorationLine: "underline",
+  },
   footer: { color: C.subtle, fontSize: 11, textAlign: "center", marginTop: 20 },
 });
