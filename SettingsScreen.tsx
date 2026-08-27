@@ -54,7 +54,7 @@ export function SettingsScreen({
   }
 
   function confirmSignOut() {
-    Alert.alert("Sign out?", "You'll need to paste a new token to reconnect.", [
+    Alert.alert("Sign out?", "You'll need to sign in again to come back.", [
       { text: "Cancel", style: "cancel" },
       { text: "Sign out", style: "destructive", onPress: onSignOut },
     ]);

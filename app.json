@@ -2,6 +2,7 @@
   "expo": {
     "name": "paisa",
     "slug": "paisa-native",
+    "scheme": "com.saniakothari.paisa",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -38,7 +39,8 @@
           "faceIDPermission": "Use Face ID to unlock paisa and keep your finances private."
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-web-browser"
     ],
     "extra": {
       "eas": {

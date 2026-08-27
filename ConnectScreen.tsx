@@ -1,111 +1,94 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { C } from "./theme";
-import { API_BASE, fetchDashboard, saveToken } from "./api";
+import { API_BASE } from "./api";
+import { signInWithGoogle } from "./googleSignIn";
+import { tapLight, notifyError } from "./haptics";
 
-/** Paste-token onboarding. Verifies the token against the server before saving. */
+/**
+ * Sign-in.
+ *
+ * This used to ask people to open a website on a computer, generate a token and
+ * paste it in — which nobody outside this project would ever have done, and
+ * which an App Review reviewer would reject outright.
+ */
 export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
-  const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function connect() {
-    const token = value.trim();
-    if (!token) return;
+  async function signIn() {
+    tapLight();
     setBusy(true);
     setError(null);
-    try {
-      await fetchDashboard(token); // validate before persisting
-      await saveToken(token);
-      onConnected();
-    } catch (e) {
-      setError(
-        e instanceof Error && e.message.includes("invalid")
-          ? "That token didn't work. Generate a fresh one and paste it again."
-          : "Couldn't reach paisa. Check your connection and try again."
-      );
-    } finally {
-      setBusy(false);
-    }
+    const result = await signInWithGoogle();
+    setBusy(false);
+
+    if (result.ok) return onConnected();
+    if (result.cancelled) return; // They backed out; nothing to say.
+    notifyError();
+    setError(result.message);
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <View style={styles.body}>
-          <View style={styles.logo}>
-            <Ionicons name="wallet" size={30} color={C.accent} />
-          </View>
-          <Text style={styles.brand}>
-            paisa<Text style={{ color: C.subtle }}>.</Text>
-          </Text>
-          <Text style={styles.subtitle}>Connect this phone to your account.</Text>
-
-          <View style={styles.steps}>
-            <Step n="1" text={`Open ${API_BASE.replace("https://", "")}/settings/mobile on your computer`} />
-            <Step n="2" text="Tap Generate token and copy it" />
-            <Step n="3" text="Paste it below" />
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder="pmt_…"
-            placeholderTextColor={C.subtle}
-            value={value}
-            onChangeText={setValue}
-            autoCapitalize="none"
-            autoCorrect={false}
-            editable={!busy}
-            multiline
-          />
-
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-
-          <Pressable
-            style={[styles.button, (!value.trim() || busy) && styles.buttonDisabled]}
-            onPress={connect}
-            disabled={!value.trim() || busy}
-          >
-            {busy ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Connect</Text>
-            )}
-          </Pressable>
+      <View style={styles.body}>
+        <View style={styles.logo}>
+          <Ionicons name="wallet" size={30} color={C.accent} />
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
+        <Text style={styles.brand}>
+          paisa<Text style={{ color: C.subtle }}>.</Text>
+        </Text>
+        <Text style={styles.subtitle}>
+          Sign in to pick up where your spending left off.
+        </Text>
 
-function Step({ n, text }: { n: string; text: string }) {
-  return (
-    <View style={styles.step}>
-      <View style={styles.stepNum}>
-        <Text style={styles.stepNumText}>{n}</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.button,
+            (busy || pressed) && { opacity: 0.85 },
+          ]}
+          onPress={signIn}
+          disabled={busy}
+        >
+          {busy ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="logo-google" size={18} color="#fff" />
+              <Text style={styles.buttonText}>Continue with Google</Text>
+            </>
+          )}
+        </Pressable>
+
+        <Text style={styles.reassure}>
+          paisa. only ever reads. It can never move money or send anything.
+        </Text>
+
+        <Pressable
+          onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
+          style={({ pressed }) => pressed && { opacity: 0.6 }}
+        >
+          <Text style={styles.privacy}>Privacy policy</Text>
+        </Pressable>
       </View>
-      <Text style={styles.stepText}>{text}</Text>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
-  body: { flex: 1, paddingHorizontal: 26, justifyContent: "center" },
+  body: { flex: 1, paddingHorizontal: 30, justifyContent: "center" },
   logo: {
     width: 60,
     height: 60,
@@ -118,42 +101,36 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   brand: { fontSize: 30, fontWeight: "700", color: C.text },
-  subtitle: { fontSize: 15, color: C.muted, marginTop: 6 },
-  steps: { marginTop: 28, gap: 14 },
-  step: { flexDirection: "row", alignItems: "center", gap: 12 },
-  stepNum: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: C.card,
-    borderWidth: 0.5,
-    borderColor: C.border,
-    alignItems: "center",
-    justifyContent: "center",
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 21,
+    color: C.muted,
+    marginTop: 8,
+    marginBottom: 32,
   },
-  stepNumText: { color: C.muted, fontSize: 12, fontWeight: "600" },
-  stepText: { flex: 1, color: C.muted, fontSize: 13, lineHeight: 18 },
-  input: {
-    marginTop: 26,
-    minHeight: 52,
-    backgroundColor: C.card,
-    borderWidth: 0.5,
-    borderColor: C.border,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: C.text,
-    fontSize: 14,
-  },
-  error: { color: "#f87171", fontSize: 13, marginTop: 12 },
+  error: { color: C.red, fontSize: 13, lineHeight: 18, marginBottom: 14 },
   button: {
-    marginTop: 18,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: C.accent,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 10,
+    height: 54,
+    borderRadius: 15,
+    backgroundColor: C.accent,
   },
-  buttonDisabled: { opacity: 0.4 },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  reassure: {
+    fontSize: 12,
+    lineHeight: 17,
+    color: C.subtle,
+    textAlign: "center",
+    marginTop: 20,
+  },
+  privacy: {
+    fontSize: 12,
+    color: C.muted,
+    textAlign: "center",
+    marginTop: 14,
+    textDecorationLine: "underline",
+  },
 });
