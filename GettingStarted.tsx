@@ -21,11 +21,15 @@ export function GettingStarted({
   onAdd,
   onConnect,
   connecting,
+  onImport,
+  importing,
 }: {
   emailConnected: boolean;
   onAdd: () => void;
   onConnect: () => void;
   connecting: boolean;
+  onImport: () => void;
+  importing: boolean;
 }) {
   return (
     <View style={styles.card}>
@@ -61,6 +65,27 @@ export function GettingStarted({
           )}
         </Pressable>
       ) : null}
+
+      <Pressable
+        onPress={() => {
+          tapLight();
+          onImport();
+        }}
+        disabled={importing}
+        style={({ pressed }) => [
+          styles.secondary,
+          (pressed || importing) && { opacity: 0.7 },
+        ]}
+      >
+        {importing ? (
+          <ActivityIndicator color={C.text} />
+        ) : (
+          <>
+            <Ionicons name="document-text-outline" size={17} color={C.text} />
+            <Text style={styles.secondaryText}>Upload a statement</Text>
+          </>
+        )}
+      </Pressable>
 
       <Pressable
         onPress={() => {

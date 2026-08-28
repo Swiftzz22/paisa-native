@@ -268,6 +268,45 @@ export function deleteAccount(
   });
 }
 
+export type ImportResult = {
+  ok: true;
+  added: number;
+  duplicates: number;
+  failed: number;
+  rows: number;
+};
+
+/**
+ * Upload a bank statement — CSV, spreadsheet or PDF. Runs the same importer
+ * the website uses, so duplicates are caught the same way.
+ *
+ * Sent as multipart rather than JSON so the file streams instead of being
+ * base64'd into memory twice.
+ */
+export async function importStatement(
+  token: string,
+  file: { uri: string; name: string; mimeType?: string | null }
+): Promise<ImportResult> {
+  const form = new FormData();
+  // React Native's FormData takes this shape for a file; it is not a browser Blob.
+  form.append("file", {
+    uri: file.uri,
+    name: file.name,
+    type: file.mimeType ?? "application/octet-stream",
+  } as unknown as Blob);
+
+  const res = await fetch(`${API_BASE}/api/mobile/import`, {
+    method: "POST",
+    // Content-Type is deliberately unset: fetch must add the multipart boundary.
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (res.status === 401) throw new AuthError("Token is invalid or expired.");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error ?? `Upload failed (${res.status}).`);
+  return body as ImportResult;
+}
+
 export type SyncResult = {
   fetched: number;
   parsed: number;

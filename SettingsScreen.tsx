@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
+  ActivityIndicator,
   Alert,
   Linking,
   Platform,
@@ -14,7 +15,8 @@ import {
 import { C } from "./theme";
 import { API_BASE, deleteAccount, type Dashboard } from "./api";
 import { biometricLabel, getLockEnabled, isBiometricAvailable, setLockEnabled } from "./biometrics";
-import { notifyError, notifySuccess } from "./haptics";
+import { notifyError, notifySuccess, tapLight } from "./haptics";
+import { pickAndImportStatement } from "./importStatement";
 
 const WEB_LINKS: { icon: string; label: string; path: string }[] = [
   { icon: "grid-outline", label: "Categories", path: "/settings/categories" },
@@ -27,15 +29,19 @@ export function SettingsScreen({
   user,
   token,
   onSignOut,
+  onImported,
 }: {
   user: Dashboard["user"] | null;
   token: string;
   onSignOut: () => void;
+  /** Refresh the other screens after an import adds rows. */
+  onImported?: () => void;
 }) {
   const [bioAvailable, setBioAvailable] = useState(false);
   const [lockOn, setLockOn] = useState(true);
   const [bioLabel, setBioLabel] = useState("Face ID");
   const [deleting, setDeleting] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -169,6 +175,34 @@ export function SettingsScreen({
           trackColor={{ false: C.border, true: C.accent }}
           thumbColor="#fff"
         />
+      </View>
+
+      <Text style={styles.sectionLabel}>Add transactions</Text>
+      <View style={styles.card}>
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
+          onPress={async () => {
+            tapLight();
+            setImporting(true);
+            const added = await pickAndImportStatement(token, onSignOut);
+            setImporting(false);
+            if (added) onImported?.();
+          }}
+          disabled={importing}
+        >
+          <Ionicons name="document-text-outline" size={20} color={C.muted} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>Upload a statement</Text>
+            <Text style={styles.hint}>
+              CSV, Excel or PDF from any bank. Duplicates are skipped.
+            </Text>
+          </View>
+          {importing ? (
+            <ActivityIndicator size="small" color={C.muted} />
+          ) : (
+            <Ionicons name="chevron-forward" size={16} color={C.subtle} />
+          )}
+        </Pressable>
       </View>
 
       <Text style={styles.sectionLabel}>Manage on the web</Text>

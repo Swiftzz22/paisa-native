@@ -30,6 +30,7 @@ import { MonthlyTrend } from "./MonthlyTrend";
 import { CustomRangeSheet, type CustomRange } from "./CustomRangeSheet";
 import { GettingStarted } from "./GettingStarted";
 import { connectGmail } from "./googleSignIn";
+import { pickAndImportStatement } from "./importStatement";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
@@ -185,6 +186,7 @@ export function DashboardScreen({
   const [custom, setCustom] = useState<CustomRange | null>(null);
   const [serverCustom, setServerCustom] = useState<Insights | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [rangeSheet, setRangeSheet] = useState(false);
 
   const colorOf = useCallback(
@@ -378,6 +380,16 @@ export function DashboardScreen({
         <GettingStarted
           emailConnected={data.emailConnected ?? false}
           onAdd={() => onAdd?.()}
+          importing={importing}
+          onImport={async () => {
+            setImporting(true);
+            const added = await pickAndImportStatement(token, onNeedAuth);
+            setImporting(false);
+            if (added) {
+              await load();
+              await loadInsights();
+            }
+          }}
           connecting={connecting}
           onConnect={async () => {
             tapLight();

@@ -358,7 +358,12 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
         )}
         {visited.has("settings") && (
           <TabPane active={tab === "settings"}>
-            <SettingsScreen user={user} token={token} onSignOut={signOut} />
+            <SettingsScreen
+              user={user}
+              token={token}
+              onSignOut={signOut}
+              onImported={() => setVersion((v) => v + 1)}
+            />
           </TabPane>
         )}
       </View>
