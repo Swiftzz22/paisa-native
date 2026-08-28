@@ -29,6 +29,7 @@ import { PieChart } from "./PieChart";
 import { MonthlyTrend } from "./MonthlyTrend";
 import { CustomRangeSheet, type CustomRange } from "./CustomRangeSheet";
 import { GettingStarted } from "./GettingStarted";
+import { connectGmail } from "./googleSignIn";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
@@ -183,6 +184,7 @@ export function DashboardScreen({
   const [showAllCats, setShowAllCats] = useState(false);
   const [custom, setCustom] = useState<CustomRange | null>(null);
   const [serverCustom, setServerCustom] = useState<Insights | null>(null);
+  const [connecting, setConnecting] = useState(false);
   const [rangeSheet, setRangeSheet] = useState(false);
 
   const colorOf = useCallback(
@@ -376,6 +378,21 @@ export function DashboardScreen({
         <GettingStarted
           emailConnected={data.emailConnected ?? false}
           onAdd={() => onAdd?.()}
+          connecting={connecting}
+          onConnect={async () => {
+            tapLight();
+            setConnecting(true);
+            const res = await connectGmail(token);
+            setConnecting(false);
+            if (res.ok) {
+              // Reload so the card flips to "looking through your inbox", and
+              // pull straight away rather than making them wait for the cron.
+              await load();
+              await onSync?.();
+            } else if (!res.cancelled) {
+              setError(res.message);
+            }
+          }}
         />
       ) : null}
 

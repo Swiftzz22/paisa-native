@@ -18,6 +18,62 @@ import { API_BASE, saveToken } from "./api";
  * Works unchanged in Expo Go (exp:// return) and in a real build
  * (com.saniakothari.paisa:// return); only the return URL differs.
  */
+/**
+ * Connect Gmail without leaving the app.
+ *
+ * Previously this opened the website and left the person to find their way
+ * back. Same consent screen, but it returns here when it's done.
+ *
+ * The browser carries no bearer token, so the app first trades its token for a
+ * short-lived ticket over HTTPS; only the ticket goes in the URL.
+ */
+export async function connectGmail(token: string): Promise<SignInResult> {
+  const returnUrl = Linking.createURL("gmail");
+
+  let ticket: string;
+  try {
+    const res = await fetch(`${API_BASE}/api/mobile/gmail-ticket`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      return { ok: false, cancelled: false, message: "Couldn't start the connection." };
+    }
+    ticket = ((await res.json()) as { ticket: string }).ticket;
+  } catch {
+    return {
+      ok: false,
+      cancelled: false,
+      message: "Couldn't reach paisa. Check your connection.",
+    };
+  }
+
+  const start =
+    `${API_BASE}/api/auth/google/connect-start` +
+    `?ticket=${encodeURIComponent(ticket)}&return=${encodeURIComponent(returnUrl)}`;
+
+  let result: WebBrowser.WebBrowserAuthSessionResult;
+  try {
+    result = await WebBrowser.openAuthSessionAsync(start, returnUrl);
+  } catch (e) {
+    return {
+      ok: false,
+      cancelled: false,
+      message: e instanceof Error ? e.message : "Couldn't open Google.",
+    };
+  }
+  if (result.type !== "success") return { ok: false, cancelled: true };
+
+  const params = Linking.parse(result.url).queryParams ?? {};
+  if (typeof params.error === "string") {
+    return { ok: false, cancelled: false, message: params.error };
+  }
+  if (params.connected !== "1") {
+    return { ok: false, cancelled: false, message: "Connection didn't complete." };
+  }
+  return { ok: true };
+}
+
 export type SignInResult =
   | { ok: true }
   | { ok: false; cancelled: true }

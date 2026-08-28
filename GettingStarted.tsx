@@ -1,7 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { C } from "./theme";
-import { API_BASE } from "./api";
 import { tapLight } from "./haptics";
 
 /**
@@ -14,9 +19,13 @@ import { tapLight } from "./haptics";
 export function GettingStarted({
   emailConnected,
   onAdd,
+  onConnect,
+  connecting,
 }: {
   emailConnected: boolean;
   onAdd: () => void;
+  onConnect: () => void;
+  connecting: boolean;
 }) {
   return (
     <View style={styles.card}>
@@ -35,14 +44,21 @@ export function GettingStarted({
 
       {!emailConnected ? (
         <Pressable
-          onPress={() => {
-            tapLight();
-            Linking.openURL(`${API_BASE}/settings/email`);
-          }}
-          style={({ pressed }) => [styles.primary, pressed && { opacity: 0.85 }]}
+          onPress={onConnect}
+          disabled={connecting}
+          style={({ pressed }) => [
+            styles.primary,
+            (pressed || connecting) && { opacity: 0.85 },
+          ]}
         >
-          <Ionicons name="mail-outline" size={17} color="#fff" />
-          <Text style={styles.primaryText}>Connect email</Text>
+          {connecting ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="mail-outline" size={17} color="#fff" />
+              <Text style={styles.primaryText}>Connect email</Text>
+            </>
+          )}
         </Pressable>
       ) : null}
 
