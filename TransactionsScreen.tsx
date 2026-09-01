@@ -261,7 +261,8 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderRadius: 12,
     paddingHorizontal: 12,
-    height: 40,
+    minHeight: 40,
+    paddingVertical: 8,
     marginTop: 12,
   },
   // 16px keeps iOS from zooming the view when the field takes focus.

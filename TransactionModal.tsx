@@ -399,7 +399,8 @@ const styles = StyleSheet.create({
   error: { color: C.red, fontSize: 13, marginTop: 16 },
   save: {
     marginTop: 12,
-    height: 52,
+    minHeight: 52,
+    paddingVertical: 12,
     borderRadius: 14,
     backgroundColor: C.accent,
     alignItems: "center",

@@ -238,12 +238,24 @@ export function SettingsScreen({
         Removes every transaction, stored email and setting. Permanent.
       </Text>
 
-      <Pressable
-        onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
-        style={({ pressed }) => pressed && { opacity: 0.6 }}
-      >
-        <Text style={styles.privacy}>Privacy policy</Text>
-      </Pressable>
+      {/* Both documents have to be reachable from inside the app: App Review
+          checks for them, and someone deciding whether to trust paisa. with
+          their bank email should not have to go hunting on a website. */}
+      <View style={styles.legalRow}>
+        <Pressable
+          onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
+          style={({ pressed }) => pressed && { opacity: 0.6 }}
+        >
+          <Text style={styles.privacy}>Privacy policy</Text>
+        </Pressable>
+        <Text style={styles.legalDot}>·</Text>
+        <Pressable
+          onPress={() => Linking.openURL(`${API_BASE}/terms`)}
+          style={({ pressed }) => pressed && { opacity: 0.6 }}
+        >
+          <Text style={styles.privacy}>Terms of use</Text>
+        </Pressable>
+      </View>
 
       <Text style={styles.footer}>paisa · connected to {API_BASE.replace("https://", "")}</Text>
     </ScrollView>
@@ -330,6 +342,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     lineHeight: 16,
   },
+  legalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  legalDot: { color: "#6b7280", fontSize: 13 },
   privacy: {
     color: C.muted,
     fontSize: 12,

@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
-  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
 } from "react-native";
@@ -59,7 +59,11 @@ const PAGES: Page[] = [
 
 /** One-time intro, shown before the sign-in step on a first launch. */
 export function WelcomeScreen({ onDone }: { onDone: () => void }) {
-  const width = Dimensions.get("window").width;
+  // Measured rather than sampled once. A one-shot read of the window is stale
+  // the moment the window changes size — an iPad Split View drag or a foldable
+  // opening left the pages laid out for the old width, so slides sat
+  // half-offscreen and the dots tracked the wrong page.
+  const { width } = useWindowDimensions();
   const [page, setPage] = useState(0);
   const scroller = useRef<ScrollView>(null);
   const last = page === PAGES.length - 1;
@@ -179,7 +183,8 @@ const styles = StyleSheet.create({
   dotActive: { backgroundColor: C.accent, width: 18 },
   footer: { paddingHorizontal: 24, paddingBottom: 12 },
   cta: {
-    height: 54,
+    minHeight: 54,
+    paddingVertical: 12,
     borderRadius: 15,
     backgroundColor: C.accent,
     alignItems: "center",

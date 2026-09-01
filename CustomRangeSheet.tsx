@@ -216,7 +216,8 @@ const styles = StyleSheet.create({
   apply: {
     backgroundColor: C.accent,
     borderRadius: 14,
-    height: 50,
+    minHeight: 50,
+    paddingVertical: 12,
     alignItems: "center",
     justifyContent: "center",
   },

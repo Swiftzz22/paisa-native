@@ -75,12 +75,21 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
           paisa. only ever reads. It can never move money or send anything.
         </Text>
 
-        <Pressable
-          onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
-          style={({ pressed }) => pressed && { opacity: 0.6 }}
-        >
-          <Text style={styles.privacy}>Privacy policy</Text>
-        </Pressable>
+        <View style={styles.legalRow}>
+          <Pressable
+            onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
+            style={({ pressed }) => pressed && { opacity: 0.6 }}
+          >
+            <Text style={styles.privacy}>Privacy policy</Text>
+          </Pressable>
+          <Text style={styles.legalDot}>·</Text>
+          <Pressable
+            onPress={() => Linking.openURL(`${API_BASE}/terms`)}
+            style={({ pressed }) => pressed && { opacity: 0.6 }}
+          >
+            <Text style={styles.privacy}>Terms of use</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -114,7 +123,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    height: 54,
+    minHeight: 54,
+    paddingVertical: 12,
     borderRadius: 15,
     backgroundColor: C.accent,
   },
@@ -126,6 +136,13 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 20,
   },
+  legalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  legalDot: { color: "#6b7280", fontSize: 13 },
   privacy: {
     fontSize: 12,
     color: C.muted,

@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { C } from "./theme";
@@ -56,6 +57,17 @@ const FALLBACK_COLORS = [
   "#3b82f6", "#22c55e", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4",
   "#ec4899", "#14b8a6", "#84cc16", "#eab308", "#6366f1", "#71717a",
 ];
+
+/**
+ * Room the category legend needs beside the donut: a colour dot, a name long
+ * enough to read ("Rent & Utilities", not "Re…"), and its percentage. The donut
+ * gets whatever is left over, so on a narrow phone it shrinks instead of
+ * squeezing the legend down to two letters.
+ */
+const MIN_LEGEND_WIDTH = 148;
+
+/** Horizontal chrome around the donut: scroll padding 18 + card padding 20, both sides. */
+const PIE_CHROME = 18 * 2 + 20 * 2 + 16; // + the pieRow gap
 
 const PAYMENT_LABELS: Record<string, string> = {
   card: "Card",
@@ -188,6 +200,17 @@ export function DashboardScreen({
   const [connecting, setConnecting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [rangeSheet, setRangeSheet] = useState(false);
+
+  // The donut was a fixed 160pt, which left ~123pt for the legend on a 375pt
+  // phone and less than half that at 360 — enough to truncate every category
+  // name. Size it from the measured window instead, clamped so it stays a
+  // readable ring on a small phone and stops growing on a tablet.
+  const { width: windowWidth } = useWindowDimensions();
+  const pieSize = Math.round(
+    Math.min(180, Math.max(112, windowWidth - PIE_CHROME - MIN_LEGEND_WIDTH))
+  );
+  // Keep the ring's weight proportional; 22/160 is the ratio the design used.
+  const pieThickness = Math.max(15, Math.round(pieSize * 0.1375));
 
   const colorOf = useCallback(
     (name: string) => {
@@ -604,8 +627,8 @@ export function DashboardScreen({
                         amount: c.amount,
                         color: c.color,
                       }))}
-                      size={160}
-                      thickness={22}
+                      size={pieSize}
+                      thickness={pieThickness}
                       trackColor={C.bg}
                       onSlicePress={openCategory}
                     />
