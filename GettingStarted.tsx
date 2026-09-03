@@ -87,15 +87,20 @@ export function GettingStarted({
         )}
       </Pressable>
 
+      {/* Demoted from a third identical button to a text link. Hick's law is
+          about options weighed at one decision point, and three buttons of the
+          same weight is three; a hierarchy of primary, secondary and link is
+          one recommendation with escape hatches. Typing transactions by hand
+          is also the rarest of the three, so it earns the least weight. */}
       <Pressable
         onPress={() => {
           tapLight();
           onAdd();
         }}
-        style={({ pressed }) => [styles.secondary, pressed && { opacity: 0.7 }]}
+        hitSlop={8}
+        style={({ pressed }) => [styles.tertiary, pressed && { opacity: 0.6 }]}
       >
-        <Ionicons name="add" size={17} color={C.text} />
-        <Text style={styles.secondaryText}>Add one by hand</Text>
+        <Text style={styles.tertiaryText}>or add one by hand</Text>
       </Pressable>
 
       <Text style={styles.footnote}>
@@ -149,6 +154,17 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   secondaryText: { color: C.text, fontSize: 15, fontWeight: "500" },
+  tertiary: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+  tertiaryText: {
+    color: C.subtle,
+    fontSize: 13,
+    textDecorationLine: "underline",
+  },
   footnote: {
     fontSize: 12,
     lineHeight: 17,
