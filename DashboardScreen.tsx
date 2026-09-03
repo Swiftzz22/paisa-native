@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -33,6 +33,8 @@ import { GettingStarted } from "./GettingStarted";
 import { connectGmail } from "./googleSignIn";
 import { pickAndImportStatement } from "./importStatement";
 import { AnimatedNumber } from "./AnimatedNumber";
+import { PeriodNav, Highlights, CalendarMonth, WeekStrip } from "./PeriodViews";
+import { windowFor, shiftAnchor } from "./period";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
 import type { Flow } from "./FlowDetailScreen";
@@ -191,6 +193,9 @@ export function DashboardScreen({
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [period, setPeriod] = useState<Period>("month");
+  // Which period is being looked at. The tabs alone could only ever describe
+  // the one containing today; this is what makes a past month reachable.
+  const [anchor, setAnchor] = useState<Date>(() => new Date());
   const [bundle, setBundle] = useState<InsightsBundle | null>(null);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [monthly, setMonthly] = useState<MonthlyBar[]>([]);
@@ -229,23 +234,32 @@ export function DashboardScreen({
   // A custom window is summarised on the device first, which is instant but
   // only sees the history held locally. The server's answer for the same window
   // replaces it as soon as it lands, so the numbers end up complete.
-  const localCustom = custom
-    ? summarizeRange(items, custom.from, custom.to, colorOf)
+  const win = useMemo(() => windowFor(period, anchor), [period, anchor]);
+
+  // The current period is already in the bundle, so stepping to it costs
+  // nothing. Any other one is fetched the same way a custom window is.
+  const activeRange: CustomRange | null =
+    custom ?? (win.isCurrent ? null : { from: win.from, to: win.to });
+
+  const localCustom = activeRange
+    ? summarizeRange(items, activeRange.from, activeRange.to, colorOf)
     : null;
-  const insights = custom
+  const insights = activeRange
     ? serverCustom ?? localCustom
     : bundle
       ? bundle[period]
       : null;
 
+  const rangeFromMs = activeRange ? +activeRange.from : null;
+  const rangeToMs = activeRange ? +activeRange.to : null;
   useEffect(() => {
-    if (!custom) {
+    if (rangeFromMs == null || rangeToMs == null) {
       setServerCustom(null);
       return;
     }
     let cancelled = false;
     setServerCustom(null);
-    fetchRangeInsights(token, custom.from, custom.to)
+    fetchRangeInsights(token, new Date(rangeFromMs), new Date(rangeToMs))
       .then((r) => {
         if (!cancelled) setServerCustom(r);
       })
@@ -255,7 +269,7 @@ export function DashboardScreen({
     return () => {
       cancelled = true;
     };
-  }, [custom, token]);
+  }, [rangeFromMs, rangeToMs, token]);
 
   /**
    * Narrow the whole card to one month from the trend chart, rather than
@@ -479,15 +493,24 @@ export function DashboardScreen({
           <View style={{ marginTop: 24 }}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Insights</Text>
-              <SegmentedControl
-                items={PERIODS}
-                value={period}
-                onChange={(p) => {
-                  setCustom(null);
-                  setPeriod(p);
-                }}
-              />
             </View>
+
+            {/* Arrows reach a past period; the tabs choose how big it is.
+                Replaces a segmented control that could only ever describe the
+                period containing today. */}
+            <PeriodNav
+              window={win}
+              onStep={(step) => {
+                tapLight();
+                setCustom(null);
+                setAnchor((a) => shiftAnchor(period, a, step));
+              }}
+              onGrain={(g) => {
+                tapLight();
+                setCustom(null);
+                setPeriod(g);
+              }}
+            />
 
             <Pressable
               onPress={() => {
@@ -524,6 +547,43 @@ export function DashboardScreen({
                 <Ionicons name="chevron-forward" size={13} color={C.subtle} />
               )}
             </Pressable>
+
+            {/* The few transactions that explain the total, and the whole
+                period as a grid — both above the category breakdown, so the
+                usual question is answered without scrolling. */}
+            <Highlights
+              items={insights?.highlights ?? []}
+              onPress={(id) => {
+                const t = items.find((x) => x.id === id);
+                if (t && onEdit) onEdit(t);
+              }}
+            />
+
+            {period === "month" && insights?.days ? (
+              <CalendarMonth
+                monthStart={win.from}
+                days={insights.days}
+                onPickDay={(d) => {
+                  tapLight();
+                  setCustom(null);
+                  setPeriod("day");
+                  setAnchor(d);
+                }}
+              />
+            ) : null}
+
+            {period === "week" && insights?.days ? (
+              <WeekStrip
+                weekStart={win.from}
+                days={insights.days}
+                onPickDay={(d) => {
+                  tapLight();
+                  setCustom(null);
+                  setPeriod("day");
+                  setAnchor(d);
+                }}
+              />
+            ) : null}
 
             <View
               style={[

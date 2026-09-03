@@ -203,6 +203,28 @@ export type Insights = {
     color: string;
     txCount: number;
   }[];
+  /** Per-calendar-day totals in the viewer's zone, for the calendar strip. */
+  days?: DayTotal[];
+  /** The one or two transactions that explain the total. */
+  highlights?: Highlight[];
+};
+
+export type DayTotal = {
+  /** YYYY-MM-DD in the viewer's timezone. */
+  date: string;
+  spent: number;
+  received: number;
+  txCount: number;
+};
+
+export type Highlight = {
+  kind: "spend" | "received";
+  id: string;
+  merchant: string;
+  category: string;
+  amount: number;
+  /** ISO timestamp. */
+  at: string;
 };
 
 export type MonthlyBar = { key: string; label: string; total: number };
@@ -319,4 +341,46 @@ export type SyncResult = {
 /** Pull the latest bank/UPI emails and parse a batch into transactions. */
 export function syncNow(token: string): Promise<SyncResult> {
   return authed<SyncResult>(token, "/api/mobile/sync", { method: "POST" });
+}
+
+export type ImportSummary = {
+  id: string;
+  filename: string;
+  bank: string;
+  /** ISO timestamp. */
+  importedAt: string;
+  remaining: number;
+  spent: number;
+  received: number;
+};
+
+/** Statements this account has imported, newest first. */
+export async function fetchImports(token: string): Promise<ImportSummary[]> {
+  const res = await authed<{ imports: ImportSummary[] }>(token, "/api/mobile/data");
+  return res.imports;
+}
+
+/** Undo one import — removes only the transactions that came from that file. */
+export function deleteImport(
+  token: string,
+  batchId: string
+): Promise<{ ok: true; deleted: number }> {
+  return authed(token, "/api/mobile/data", {
+    method: "DELETE",
+    body: JSON.stringify({ scope: "import", batchId }),
+  });
+}
+
+/**
+ * Remove every transaction, keeping the account and everything set up around
+ * it. `confirm` must be the word DELETE.
+ */
+export function deleteAllTransactions(
+  token: string,
+  confirm: string
+): Promise<{ ok: true; deleted: number; emailsReset: number }> {
+  return authed(token, "/api/mobile/data", {
+    method: "DELETE",
+    body: JSON.stringify({ scope: "all", confirm }),
+  });
 }

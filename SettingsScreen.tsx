@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
@@ -13,7 +13,16 @@ import {
   View,
 } from "react-native";
 import { C } from "./theme";
-import { API_BASE, deleteAccount, type Dashboard } from "./api";
+import {
+  API_BASE,
+  deleteAccount,
+  deleteAllTransactions,
+  deleteImport,
+  fetchImports,
+  type Dashboard,
+  type ImportSummary,
+} from "./api";
+import { inr } from "./format";
 import { biometricLabel, getLockEnabled, isBiometricAvailable, setLockEnabled } from "./biometrics";
 import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
@@ -41,6 +50,105 @@ export function SettingsScreen({
   const [lockOn, setLockOn] = useState(true);
   const [bioLabel, setBioLabel] = useState("Face ID");
   const [deleting, setDeleting] = useState(false);
+  const [imports, setImports] = useState<ImportSummary[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const loadImports = useCallback(() => {
+    fetchImports(token)
+      .then(setImports)
+      .catch(() => {
+        // Not worth an error state: the rest of Settings still works, and the
+        // list reappears on the next visit.
+      });
+  }, [token]);
+
+  useEffect(loadImports, [loadImports]);
+
+  function confirmRemoveImport(b: ImportSummary) {
+    Alert.alert(
+      `Remove ${b.filename}?`,
+      `Deletes the ${b.remaining} transaction${b.remaining === 1 ? "" : "s"} that came from this file. Anything you typed in or that arrived by email stays.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              const r = await deleteImport(token, b.id);
+              notifySuccess();
+              Alert.alert("Removed", `${r.deleted} transactions deleted.`);
+              loadImports();
+              onImported?.();
+            } catch (e) {
+              notifyError();
+              Alert.alert(
+                "Couldn't remove that import",
+                e instanceof Error ? e.message : "Please try again."
+              );
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  function confirmClearAll() {
+    Alert.alert(
+      "Delete all transactions?",
+      "Your account, categories, budgets and rules are kept. Emails paisa. already stored will be read again on the next sync.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Continue",
+          style: "destructive",
+          onPress: () => {
+            // Alert.prompt is iOS-only, same as account deletion above.
+            if (Platform.OS !== "ios") {
+              Linking.openURL(`${API_BASE}/settings/data`);
+              return;
+            }
+            Alert.prompt(
+              "Type DELETE to confirm",
+              "This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete",
+                  style: "destructive",
+                  onPress: async (typed?: string) => {
+                    setBusy(true);
+                    try {
+                      const r = await deleteAllTransactions(token, typed ?? "");
+                      notifySuccess();
+                      Alert.alert(
+                        "Deleted",
+                        `${r.deleted} transactions removed.`
+                      );
+                      loadImports();
+                      onImported?.();
+                    } catch (e) {
+                      notifyError();
+                      Alert.alert(
+                        "Nothing was deleted",
+                        e instanceof Error ? e.message : "Please try again."
+                      );
+                    } finally {
+                      setBusy(false);
+                    }
+                  },
+                },
+              ],
+              "plain-text"
+            );
+          },
+        },
+      ]
+    );
+  }
   const [importing, setImporting] = useState(false);
 
   useEffect(() => {
@@ -220,6 +328,51 @@ export function SettingsScreen({
         ))}
       </View>
 
+      {/* Removing data without removing the account. Deleting the account was
+          the only undo available, which is far too blunt an answer to
+          "I imported the wrong file". */}
+      <Text style={styles.groupTitle}>Your data</Text>
+      {imports.length > 0 ? (
+        imports.map((b) => (
+          <View key={b.id} style={styles.importRow}>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={styles.importName} numberOfLines={1}>
+                {b.filename}
+              </Text>
+              <Text style={styles.importMeta} numberOfLines={1}>
+                {b.bank} · {b.remaining} transaction
+                {b.remaining === 1 ? "" : "s"}
+                {b.spent > 0 ? ` · ${inr(b.spent)} spent` : ""}
+              </Text>
+            </View>
+            <Pressable
+              onPress={() => confirmRemoveImport(b)}
+              disabled={busy}
+              style={({ pressed }) => [styles.removeBtn, pressed && { opacity: 0.6 }]}
+            >
+              <Text style={styles.removeBtnText}>Remove</Text>
+            </Pressable>
+          </View>
+        ))
+      ) : (
+        <Text style={styles.importEmpty}>
+          No statements imported yet.
+        </Text>
+      )}
+
+      <Pressable
+        style={({ pressed }) => [styles.clearRow, pressed && { opacity: 0.6 }]}
+        onPress={confirmClearAll}
+        disabled={busy}
+      >
+        <Ionicons name="trash-outline" size={17} color={C.red} />
+        <Text style={styles.clearText}>Delete all transactions</Text>
+      </Pressable>
+      <Text style={styles.deleteHint}>
+        Clears your transactions but keeps your account, categories, budgets and
+        rules. Emails already stored are read again on the next sync.
+      </Text>
+
       <Pressable style={styles.signOut} onPress={confirmSignOut}>
         <Ionicons name="log-out-outline" size={20} color={C.red} />
         <Text style={styles.signOutText}>Sign out</Text>
@@ -356,5 +509,54 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     textDecorationLine: "underline",
   },
+  groupTitle: {
+    color: C.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+    marginTop: 26,
+    marginBottom: 8,
+  },
+  importRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: C.card,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 12,
+    marginBottom: 8,
+  },
+  importName: { color: C.text, fontSize: 13, fontWeight: "600" },
+  importMeta: { color: C.subtle, fontSize: 11, marginTop: 2 },
+  importEmpty: {
+    color: C.subtle,
+    fontSize: 12,
+    paddingVertical: 10,
+  },
+  removeBtn: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: C.red,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removeBtnText: { color: C.red, fontSize: 12, fontWeight: "600" },
+  clearRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minHeight: 46,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginTop: 6,
+  },
+  clearText: { color: C.red, fontSize: 14, fontWeight: "600" },
   footer: { color: C.subtle, fontSize: 11, textAlign: "center", marginTop: 20 },
 });
