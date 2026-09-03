@@ -23,6 +23,7 @@ export function GettingStarted({
   connecting,
   onImport,
   importing,
+  categoriesReady = true,
 }: {
   emailConnected: boolean;
   onAdd: () => void;
@@ -30,7 +31,20 @@ export function GettingStarted({
   connecting: boolean;
   onImport: () => void;
   importing: boolean;
+  /** Categories are seeded at first sign-in; false only if that hasn't run. */
+  categoriesReady?: boolean;
 }) {
+  // Setup shown as progress rather than a blank slate. The account and the
+  // categories really are done, so ticking them is honest — and starting part
+  // of the way along rather than at zero measurably changes whether people
+  // finish. The steps are status only; the single action is below them.
+  const steps = [
+    { done: true, label: "Account created" },
+    { done: categoriesReady, label: "Categories ready" },
+    { done: false, label: "Get your transactions in" },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+
   return (
     <View style={styles.card}>
       <View style={styles.badge}>
@@ -45,6 +59,35 @@ export function GettingStarted({
           ? "paisa. is reading your bank and UPI emails now. Transactions appear here on their own — pull down to check again. The first sweep can take a few minutes."
           : "Connect the email your bank writes to, and paisa. will turn every alert into a transaction automatically. Until then you can still add spending by hand."}
       </Text>
+
+      <View style={styles.progressWrap}>
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${(doneCount / steps.length) * 100}%` },
+            ]}
+          />
+        </View>
+        <Text style={styles.progressText}>
+          {doneCount} of {steps.length} done
+        </Text>
+      </View>
+
+      <View style={styles.steps}>
+        {steps.map((st) => (
+          <View key={st.label} style={styles.stepRow}>
+            <Ionicons
+              name={st.done ? "checkmark-circle" : "ellipse-outline"}
+              size={15}
+              color={st.done ? C.green : C.subtle}
+            />
+            <Text style={[styles.stepText, st.done && styles.stepDone]}>
+              {st.label}
+            </Text>
+          </View>
+        ))}
+      </View>
 
       {!emailConnected ? (
         <Pressable
@@ -154,6 +197,26 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   secondaryText: { color: C.text, fontSize: 15, fontWeight: "500" },
+  progressWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+    marginBottom: 10,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: C.border,
+    overflow: "hidden",
+  },
+  progressFill: { height: "100%", borderRadius: 3, backgroundColor: C.text },
+  progressText: { color: C.subtle, fontSize: 11 },
+  steps: { gap: 6, marginBottom: 14 },
+  stepRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stepText: { color: C.text, fontSize: 13 },
+  stepDone: { color: C.subtle, textDecorationLine: "line-through" },
   tertiary: {
     minHeight: 44,
     alignItems: "center",

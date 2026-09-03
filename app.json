@@ -47,9 +47,7 @@
         "projectId": "8f9660e5-42d9-4c77-b097-0336f170c1ed"
       }
     },
-    "runtimeVersion": {
-      "policy": "fingerprint"
-    },
+    "runtimeVersion": "exposdk:54.0.0",
     "updates": {
       "url": "https://u.expo.dev/8f9660e5-42d9-4c77-b097-0336f170c1ed",
       "fallbackToCacheTimeout": 0
