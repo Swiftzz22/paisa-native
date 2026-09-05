@@ -35,10 +35,12 @@ export function PeriodNav({
   onGrain: (g: Period) => void;
 }) {
   const [picking, setPicking] = useState(false);
-  const [draft, setDraft] = useState<Date>(w.from);
+  const [draft, setDraft] = useState<Date>(() => new Date());
 
+  // Always opens on today rather than on whatever period is being read, so the
+  // calendar starts from the present however far back you have wandered.
   function open() {
-    setDraft(w.from);
+    setDraft(new Date());
     setPicking(true);
   }
 
@@ -59,20 +61,25 @@ export function PeriodNav({
           for last month and hopeless for last March. The label is the control,
           and the grain below decides whether a chosen date means that day, its
           week, its month or its year. */}
-      <Pressable
-        onPress={open}
-        accessibilityLabel={`${w.label}. Choose a different date`}
-        style={({ pressed }) => [styles.picker, pressed && styles.pressed]}
-      >
-        <Ionicons name="calendar-outline" size={16} color={C.muted} />
+      <View style={styles.picker}>
         <View style={styles.navLabelWrap}>
           <Text style={styles.navLabel} numberOfLines={1}>
             {w.label}
+            {w.isCurrent ? <Text style={styles.navSub}>  SO FAR</Text> : null}
           </Text>
-          {w.isCurrent ? <Text style={styles.navSub}>so far</Text> : null}
+          <Text style={styles.navHint} numberOfLines={1}>
+            Tap the calendar to jump to any date
+          </Text>
         </View>
-        <Ionicons name="chevron-down" size={15} color={C.subtle} />
-      </Pressable>
+        <Pressable
+          onPress={open}
+          accessibilityLabel="Choose a date"
+          hitSlop={8}
+          style={({ pressed }) => [styles.calBtn, pressed && styles.pressed]}
+        >
+          <Ionicons name="calendar-outline" size={19} color={C.text} />
+        </Pressable>
+      </View>
 
       <View style={styles.grainRow}>
         {GRAINS.map((g) => {
@@ -387,13 +394,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    minHeight: 48,
-    paddingHorizontal: 14,
+    minHeight: 56,
+    paddingLeft: 14,
+    paddingRight: 8,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.card,
   },
+  calBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  navHint: { color: C.subtle, fontSize: 10, marginTop: 2 },
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
@@ -429,9 +447,9 @@ const styles = StyleSheet.create({
   sheetBtnPrimary: { backgroundColor: C.text, borderColor: C.text },
   sheetBtnText: { color: C.muted, fontSize: 14, fontWeight: "600" },
   sheetBtnTextPrimary: { color: C.bg, fontSize: 14, fontWeight: "700" },
-  navLabelWrap: { flex: 1, alignItems: "center" },
+  navLabelWrap: { flex: 1, minWidth: 0 },
   navLabel: { color: C.text, fontSize: 15, fontWeight: "700" },
-  navSub: { color: C.subtle, fontSize: 10, letterSpacing: 0.6, marginTop: 1 },
+  navSub: { color: C.subtle, fontSize: 10, letterSpacing: 0.6, fontWeight: "600" },
 
   grainRow: { flexDirection: "row", gap: 6 },
   grain: {
