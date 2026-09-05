@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -11,7 +11,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { C } from "./theme";
 import { API_BASE } from "./api";
+import * as AppleAuthentication from "expo-apple-authentication";
 import { signInWithGoogle } from "./googleSignIn";
+import { isAppleSignInAvailable, signInWithApple } from "./appleSignIn";
 import { tapLight, notifyError } from "./haptics";
 
 /**
@@ -24,6 +26,30 @@ import { tapLight, notifyError } from "./haptics";
 export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Only offered where iOS actually supports it, so the button never appears
+  // as something that cannot work.
+  const [appleReady, setAppleReady] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    isAppleSignInAvailable().then((ok) => alive && setAppleReady(ok));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function signInApple() {
+    tapLight();
+    setBusy(true);
+    setError(null);
+    const result = await signInWithApple();
+    setBusy(false);
+
+    if (result.ok) return onConnected();
+    if (result.cancelled) return;
+    notifyError();
+    setError(result.message);
+  }
 
   async function signIn() {
     tapLight();
@@ -52,6 +78,25 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
         </Text>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
+
+        {/* Apple first and in Apple's own styling. Guideline 4.8 requires an
+            equivalent privacy-preserving option wherever a third-party login
+            is offered, and it is also the only way an App Review tester can
+            sign in at all — they have an Apple ID, not the owner's Google
+            account. */}
+        {appleReady ? (
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={
+              AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+            }
+            buttonStyle={
+              AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+            }
+            cornerRadius={12}
+            style={styles.appleButton}
+            onPress={busy ? () => {} : signInApple}
+          />
+        ) : null}
 
         <Pressable
           style={({ pressed }) => [
@@ -118,6 +163,7 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   error: { color: C.red, fontSize: 13, lineHeight: 18, marginBottom: 14 },
+  appleButton: { width: "100%", height: 50, marginBottom: 10 },
   button: {
     flexDirection: "row",
     alignItems: "center",
