@@ -125,14 +125,16 @@ export function PeriodNav({
           >
             <Pressable style={styles.sheet} onPress={() => {}}>
               <Text style={styles.sheetTitle}>Jump to a date</Text>
-              <DateTimePicker
-                value={draft}
-                mode="date"
-                display="inline"
-                maximumDate={new Date()}
-                themeVariant="dark"
-                onChange={onChange}
-              />
+              <View style={styles.pickerWrap}>
+                <DateTimePicker
+                  value={draft}
+                  mode="date"
+                  display="spinner"
+                  themeVariant="dark"
+                  maximumDate={new Date()}
+                  onChange={onChange}
+                />
+              </View>
               <View style={styles.sheetActions}>
                 <Pressable
                   onPress={() => setPicking(false)}
@@ -434,6 +436,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 6,
   },
+  // Height matters: the picker collapses to nothing inside a modal without
+  // one, which is what made the sheet look empty.
+  pickerWrap: { height: 200, justifyContent: "center" },
   sheetActions: { flexDirection: "row", gap: 8, marginTop: 10 },
   sheetBtn: {
     flex: 1,
