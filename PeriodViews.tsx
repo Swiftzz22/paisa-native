@@ -119,11 +119,19 @@ export function PeriodNav({
           animationType="fade"
           onRequestClose={() => setPicking(false)}
         >
-          <Pressable
-            style={styles.backdrop}
-            onPress={() => setPicking(false)}
-          >
-            <Pressable style={styles.sheet} onPress={() => {}}>
+          {/* The dismiss target is a sibling BEHIND the sheet, not a wrapper
+              around it. Wrapping the sheet in a Pressable made that press
+              responder swallow every touch aimed at the calendar inside it:
+              tapping a day or the month arrows did nothing, the draft stayed
+              on today, and "Show it" then applied today — which looked like
+              the picker refusing to accept a different date. */}
+          <View style={styles.backdrop}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setPicking(false)}
+              accessibilityLabel="Close"
+            />
+            <View style={styles.sheet}>
               <Text style={styles.sheetTitle}>Jump to a date</Text>
               {/* A real month grid, not the spinner. Scrolling three tumblers
                   to reach a date is the opposite of picking one, and iOS's
@@ -180,8 +188,8 @@ export function PeriodNav({
                   <Text style={styles.sheetBtnTextPrimary}>Show it</Text>
                 </Pressable>
               </View>
-            </Pressable>
-          </Pressable>
+            </View>
+          </View>
         </Modal>
       ) : null}
     </View>
