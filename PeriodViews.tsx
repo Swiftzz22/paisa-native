@@ -125,17 +125,38 @@ export function PeriodNav({
           >
             <Pressable style={styles.sheet} onPress={() => {}}>
               <Text style={styles.sheetTitle}>Jump to a date</Text>
+              {/* A real month grid, not the spinner. Scrolling three tumblers
+                  to reach a date is the opposite of picking one, and iOS's
+                  inline calendar lets you jump months and tap a day directly.
+                  It needs explicit height — inside a modal it collapses to
+                  nothing without one, which is what made the sheet look
+                  empty the first time. */}
               <View style={styles.pickerWrap}>
                 <DateTimePicker
                   value={draft}
                   mode="date"
-                  display="spinner"
+                  display="inline"
                   themeVariant="dark"
                   maximumDate={new Date()}
                   onChange={onChange}
+                  style={styles.picker3}
                 />
               </View>
               <View style={styles.sheetActions}>
+                {/* Getting back to the present shouldn't mean navigating the
+                    grid back to it. */}
+                <Pressable
+                  onPress={() => {
+                    setPicking(false);
+                    onPickDate(new Date());
+                  }}
+                  style={({ pressed }) => [
+                    styles.sheetBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.sheetBtnText}>Today</Text>
+                </Pressable>
                 <Pressable
                   onPress={() => setPicking(false)}
                   style={({ pressed }) => [
@@ -419,16 +440,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
     alignItems: "center",
     justifyContent: "center",
-    padding: 20,
+    padding: 10,
   },
+  // A month grid wants ~320pt of width. On a 375pt phone, 20pt of backdrop
+  // padding plus 28pt of sheet padding left only ~307 and squeezed it.
   sheet: {
     width: "100%",
-    maxWidth: 380,
+    maxWidth: 420,
     backgroundColor: C.card,
     borderRadius: 20,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 14,
+    padding: 10,
   },
   sheetTitle: {
     color: C.text,
@@ -436,9 +459,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 6,
   },
-  // Height matters: the picker collapses to nothing inside a modal without
-  // one, which is what made the sheet look empty.
-  pickerWrap: { height: 200, justifyContent: "center" },
+  // A month grid needs room for six rows of dates plus its own header.
+  pickerWrap: { height: 340, width: "100%" },
+  picker3: { flex: 1, width: "100%" },
   sheetActions: { flexDirection: "row", gap: 8, marginTop: 10 },
   sheetBtn: {
     flex: 1,
