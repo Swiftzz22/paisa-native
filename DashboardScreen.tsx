@@ -34,7 +34,7 @@ import { connectGmail } from "./googleSignIn";
 import { pickAndImportStatement } from "./importStatement";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { PeriodNav, Highlights, CalendarMonth, WeekStrip } from "./PeriodViews";
-import { windowFor, shiftAnchor } from "./period";
+import { windowFor } from "./period";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
 import type { Flow } from "./FlowDetailScreen";
@@ -500,15 +500,20 @@ export function DashboardScreen({
                 period containing today. */}
             <PeriodNav
               window={win}
-              onStep={(step) => {
+              onPickDate={(d) => {
                 tapLight();
                 setCustom(null);
-                setAnchor((a) => shiftAnchor(period, a, step));
+                setAnchor(d);
               }}
               onGrain={(g) => {
                 tapLight();
                 setCustom(null);
                 setPeriod(g);
+                // Switching size lands on the current one of that size —
+                // tapping "Week" means this week, not the week containing
+                // whatever month you happened to be reading. A specific date
+                // still comes from the calendar or a tapped day.
+                setAnchor(new Date());
               }}
             />
 

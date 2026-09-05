@@ -1,5 +1,7 @@
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { Ionicons } from "@expo/vector-icons";
+import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { C } from "./theme";
 import { inr } from "./format";
 import type { DayTotal, Highlight, Period } from "./api";
@@ -24,49 +26,53 @@ const GRAINS: { key: Period; label: string }[] = [
 
 export function PeriodNav({
   window: w,
-  onStep,
+  onPickDate,
   onGrain,
 }: {
   window: PeriodWindow;
-  onStep: (step: number) => void;
+  /** A date chosen from the calendar; the grain decides what is shown. */
+  onPickDate: (d: Date) => void;
   onGrain: (g: Period) => void;
 }) {
+  const [picking, setPicking] = useState(false);
+  const [draft, setDraft] = useState<Date>(w.from);
+
+  function open() {
+    setDraft(w.from);
+    setPicking(true);
+  }
+
+  // Android's picker is a dialog that closes itself on choose or dismiss;
+  // iOS renders inline, so it needs its own sheet and a Done button.
+  function onChange(_: unknown, picked?: Date) {
+    if (Platform.OS === "android") {
+      setPicking(false);
+      if (picked) onPickDate(picked);
+      return;
+    }
+    if (picked) setDraft(picked);
+  }
+
   return (
     <View style={styles.navWrap}>
-      <View style={styles.navRow}>
-        <Pressable
-          onPress={() => onStep(-1)}
-          accessibilityLabel={`Previous ${w.grain}`}
-          hitSlop={8}
-          style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
-        >
-          <Text style={styles.arrowText}>‹</Text>
-        </Pressable>
-
+      {/* A calendar rather than arrows: stepping one period at a time is fine
+          for last month and hopeless for last March. The label is the control,
+          and the grain below decides whether a chosen date means that day, its
+          week, its month or its year. */}
+      <Pressable
+        onPress={open}
+        accessibilityLabel={`${w.label}. Choose a different date`}
+        style={({ pressed }) => [styles.picker, pressed && styles.pressed]}
+      >
+        <Ionicons name="calendar-outline" size={16} color={C.muted} />
         <View style={styles.navLabelWrap}>
           <Text style={styles.navLabel} numberOfLines={1}>
             {w.label}
           </Text>
           {w.isCurrent ? <Text style={styles.navSub}>so far</Text> : null}
         </View>
-
-        {w.isCurrent ? (
-          // Kept in place rather than removed, so the label doesn't jump
-          // sideways when you reach the present.
-          <View style={[styles.arrow, styles.arrowDisabled]}>
-            <Text style={[styles.arrowText, { color: C.border }]}>›</Text>
-          </View>
-        ) : (
-          <Pressable
-            onPress={() => onStep(1)}
-            accessibilityLabel={`Next ${w.grain}`}
-            hitSlop={8}
-            style={({ pressed }) => [styles.arrow, pressed && styles.pressed]}
-          >
-            <Text style={styles.arrowText}>›</Text>
-          </Pressable>
-        )}
-      </View>
+        <Ionicons name="chevron-down" size={15} color={C.subtle} />
+      </Pressable>
 
       <View style={styles.grainRow}>
         {GRAINS.map((g) => {
@@ -88,6 +94,66 @@ export function PeriodNav({
           );
         })}
       </View>
+
+      {picking && Platform.OS === "android" ? (
+        <DateTimePicker
+          value={draft}
+          mode="date"
+          display="calendar"
+          maximumDate={new Date()}
+          onChange={onChange}
+        />
+      ) : null}
+
+      {Platform.OS !== "android" ? (
+        <Modal
+          visible={picking}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPicking(false)}
+        >
+          <Pressable
+            style={styles.backdrop}
+            onPress={() => setPicking(false)}
+          >
+            <Pressable style={styles.sheet} onPress={() => {}}>
+              <Text style={styles.sheetTitle}>Jump to a date</Text>
+              <DateTimePicker
+                value={draft}
+                mode="date"
+                display="inline"
+                maximumDate={new Date()}
+                themeVariant="dark"
+                onChange={onChange}
+              />
+              <View style={styles.sheetActions}>
+                <Pressable
+                  onPress={() => setPicking(false)}
+                  style={({ pressed }) => [
+                    styles.sheetBtn,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.sheetBtnText}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setPicking(false);
+                    onPickDate(draft);
+                  }}
+                  style={({ pressed }) => [
+                    styles.sheetBtn,
+                    styles.sheetBtnPrimary,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.sheetBtnTextPrimary}>Show it</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      ) : null}
     </View>
   );
 }
@@ -317,18 +383,52 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
 
   navWrap: { marginTop: 12, gap: 8 },
-  navRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  arrow: {
-    width: 44,
-    height: 44,
+  picker: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    backgroundColor: C.card,
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+  sheet: {
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: C.card,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+  },
+  sheetTitle: {
+    color: C.text,
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  sheetActions: { flexDirection: "row", gap: 8, marginTop: 10 },
+  sheetBtn: {
+    flex: 1,
+    minHeight: 44,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: C.border,
     alignItems: "center",
     justifyContent: "center",
   },
-  arrowDisabled: { borderColor: "transparent" },
-  arrowText: { color: C.muted, fontSize: 22, lineHeight: 24 },
+  sheetBtnPrimary: { backgroundColor: C.text, borderColor: C.text },
+  sheetBtnText: { color: C.muted, fontSize: 14, fontWeight: "600" },
+  sheetBtnTextPrimary: { color: C.bg, fontSize: 14, fontWeight: "700" },
   navLabelWrap: { flex: 1, alignItems: "center" },
   navLabel: { color: C.text, fontSize: 15, fontWeight: "700" },
   navSub: { color: C.subtle, fontSize: 10, letterSpacing: 0.6, marginTop: 1 },
