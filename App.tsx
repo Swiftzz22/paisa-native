@@ -23,6 +23,7 @@ import {
   shouldLock,
   syncedRecently,
 } from "./biometrics";
+import * as Updates from "expo-updates";
 import { ConnectScreen } from "./ConnectScreen";
 import { WelcomeScreen } from "./WelcomeScreen";
 import { LockScreen } from "./LockScreen";
@@ -59,12 +60,41 @@ export default function App() {
     })();
   }, []);
 
-  // NOTE: no auto-update check here. expo-updates' checkForUpdateAsync /
-  // fetchUpdateAsync / reloadAsync all reject inside Expo Go, so a check would
-  // be dead code that silently swallows its own error. Expo Go also pins each
-  // project to the exact update URL it was opened with, so a new `eas update`
-  // is only picked up by opening that update's URL. Auto-updates start working
-  // once this ships as a real build (eas build), not in Expo Go.
+  // Fetch and apply an update on launch.
+  //
+  // The comment that used to sit here said auto-updates "start working once
+  // this ships as a real build" — true, and then nothing was ever added to do
+  // it. Expo's own background check applies an update on the launch *after* the
+  // one that downloads it, so getting a fix onto a device meant opening the app
+  // twice with a pause in between and no way to tell whether it had worked.
+  // That silence cost several rounds of debugging fixes that were never
+  // actually running on the phone.
+  //
+  // Every call here is a no-op in Expo Go and in dev, where `Updates.isEnabled`
+  // is false — which is why the old note was right that a check would have been
+  // dead code back then, and why this one is guarded rather than removed.
+  useEffect(() => {
+    if (!Updates.isEnabled) return;
+    let alive = true;
+    (async () => {
+      try {
+        const check = await Updates.checkForUpdateAsync();
+        if (!alive || !check.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        if (!alive) return;
+        // Restart straight into it. Waiting for the next launch is what made
+        // this invisible; a reload one second after opening reads as the app
+        // simply starting.
+        await Updates.reloadAsync();
+      } catch {
+        // Offline, or the server had nothing. Neither is worth interrupting
+        // someone over — the app they already have works.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const goConnect = useCallback(() => setState({ kind: "connect" }), []);
   const onConnected = useCallback(async () => {
