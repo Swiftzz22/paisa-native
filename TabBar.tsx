@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { tapLight, tapSelection } from "./haptics";
 
 export type TabKey = "home" | "activity" | "ask" | "settings";
@@ -92,7 +92,7 @@ const styles = StyleSheet.create({
   fab: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: R.pill,
     backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",

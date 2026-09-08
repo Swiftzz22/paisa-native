@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { inr, relativeDate, categoryIcon, categoryColor } from "./format";
 import { type Txn } from "./api";
 import { tapSelection } from "./haptics";
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: C.card,
-    borderRadius: 12,
+    borderRadius: R.control,
     paddingHorizontal: 12,
     minHeight: 40,
     paddingVertical: 8,
@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
   chip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: R.pill,
     backgroundColor: C.card,
   },
   chipActive: { backgroundColor: C.accent },
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
   txnIcon: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: R.pill,
     alignItems: "center",
     justifyContent: "center",
   },

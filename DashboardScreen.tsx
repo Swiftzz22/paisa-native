@@ -11,7 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { C } from "./theme";
+import { C, R, R_INNER, SPACE } from "./theme";
 import { inr, relativeDate, categoryIcon, categoryColor } from "./format";
 import {
   AuthError,
@@ -68,8 +68,8 @@ const FALLBACK_COLORS = [
  */
 const MIN_LEGEND_WIDTH = 148;
 
-/** Horizontal chrome around the donut: scroll padding 18 + card padding 20, both sides. */
-const PIE_CHROME = 18 * 2 + 20 * 2 + 16; // + the pieRow gap
+/** Horizontal chrome around the donut: scroll padding 18 + card padding, both sides. */
+const PIE_CHROME = 18 * 2 + SPACE.card * 2 + 16; // + the pieRow gap
 
 const PAYMENT_LABELS: Record<string, string> = {
   card: "Card",
@@ -882,14 +882,14 @@ const styles = StyleSheet.create({
   syncPill: { flexDirection: "row", alignItems: "center", gap: 6 },
   syncText: { fontSize: 12, color: C.muted },
   syncNote: { fontSize: 11, color: C.subtle, paddingBottom: 6 },
-  errorCard: { backgroundColor: C.redBg, borderRadius: 12, padding: 14, marginTop: 6 },
+  errorCard: { backgroundColor: C.redBg, borderRadius: R.control, padding: 14, marginTop: 6 },
   errorText: { color: C.red, fontSize: 13 },
   hero: {
     backgroundColor: C.card,
-    borderRadius: 20,
+    borderRadius: R.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    padding: 20,
+    padding: SPACE.card,
     marginTop: 6,
   },
   heroLabel: { fontSize: 13, color: C.muted },
@@ -908,14 +908,14 @@ const styles = StyleSheet.create({
     backgroundColor: C.greenBg,
     paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 20,
+    borderRadius: R.pill,
   },
   pillUp: { backgroundColor: C.redBg },
   pillText: { fontSize: 12, color: C.green, fontWeight: "500" },
   budgetRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
   budgetText: { fontSize: 12, color: C.muted },
-  track: { height: 6, backgroundColor: "#000", borderRadius: 99, overflow: "hidden" },
-  trackFill: { height: "100%", borderRadius: 99 },
+  track: { height: 6, backgroundColor: "#000", borderRadius: R.pill, overflow: "hidden" },
+  trackFill: { height: "100%", borderRadius: R.pill },
   sectionTitle: { fontSize: 15, fontWeight: "600", color: C.text },
   sectionRow: {
     flexDirection: "row",
@@ -933,10 +933,10 @@ const styles = StyleSheet.create({
   sectionMeta: { fontSize: 12, color: C.subtle },
   insightsCard: {
     backgroundColor: C.card,
-    borderRadius: 20,
+    borderRadius: R.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    padding: 20,
+    padding: SPACE.card,
     marginTop: 14,
   },
   insightsLabel: { fontSize: 13, color: C.muted },
@@ -947,11 +947,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   insightsSub: { fontSize: 12, color: C.subtle, marginTop: 2 },
+  // Sits one card-padding inside `insightsCard`, so its corners are concentric
+  // with the card's rather than a guess that happened to look close.
   flowRow: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: C.bg,
-    borderRadius: 12,
+    borderRadius: R_INNER,
     paddingVertical: 12,
     marginTop: 16,
   },
@@ -969,7 +971,7 @@ const styles = StyleSheet.create({
   },
   pieLegend: { flex: 1, gap: 8 },
   legendRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  legendDot: { width: 8, height: 8, borderRadius: 4 },
+  legendDot: { width: 8, height: 8, borderRadius: R.pill },
   legendName: { flex: 1, fontSize: 13, color: C.text },
   legendPct: { fontSize: 13, color: C.muted, fontWeight: "500" },
   legendMore: { fontSize: 12, color: C.subtle, marginTop: 2 },
@@ -989,18 +991,18 @@ const styles = StyleSheet.create({
   modeAmount: { fontSize: 12, color: C.muted, fontWeight: "500" },
   empty: { color: C.subtle, fontSize: 13, paddingVertical: 8 },
   catRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 14 },
-  dot: { width: 9, height: 9, borderRadius: 5 },
+  dot: { width: 9, height: 9, borderRadius: R.pill },
   catTop: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
   catName: { fontSize: 14, color: C.text },
   catAmt: { fontSize: 14, color: C.text, fontWeight: "500" },
-  catTrack: { height: 5, backgroundColor: C.card, borderRadius: 99, overflow: "hidden" },
-  catFill: { height: "100%", borderRadius: 99 },
+  catTrack: { height: 5, backgroundColor: C.card, borderRadius: R.pill, overflow: "hidden" },
+  catFill: { height: "100%", borderRadius: R.pill },
   txn: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 11 },
   txnBorder: { borderBottomWidth: 0.5, borderBottomColor: C.border },
   txnIcon: {
     width: 38,
     height: 38,
-    borderRadius: 19,
+    borderRadius: R.pill,
     alignItems: "center",
     justifyContent: "center",
   },

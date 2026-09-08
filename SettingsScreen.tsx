@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { C } from "./theme";
+import { C, R, R_INNER, SPACE } from "./theme";
 import {
   API_BASE,
   deleteAccount,
@@ -426,14 +426,14 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: R.card,
+    padding: SPACE.card,
     marginTop: 6,
   },
   avatar: {
     width: 46,
     height: 46,
-    borderRadius: 23,
+    borderRadius: R.pill,
     backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",
@@ -449,11 +449,15 @@ const styles = StyleSheet.create({
     marginTop: 22,
     marginBottom: 10,
   },
+  // Rows run edge to edge and are clipped to this curve, so there is no inner
+  // radius to match here — `overflow: hidden` makes the card's own corner the
+  // only one. That is why the card padding had to stay small enough that this
+  // radius does not eat into the first row.
   card: {
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    borderRadius: 16,
+    borderRadius: R.card,
     overflow: "hidden",
   },
   securityRow: {
@@ -480,7 +484,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 24,
     paddingVertical: 15,
-    borderRadius: 14,
+    borderRadius: R.control,
     borderWidth: 0.5,
     borderColor: C.border,
     backgroundColor: C.card,
@@ -523,7 +527,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     backgroundColor: C.card,
-    borderRadius: 12,
+    borderRadius: R.control,
     borderWidth: 1,
     borderColor: C.border,
     padding: 12,
@@ -539,7 +543,7 @@ const styles = StyleSheet.create({
   removeBtn: {
     minHeight: 36,
     paddingHorizontal: 12,
-    borderRadius: 9,
+    borderRadius: R.pill,
     borderWidth: 1,
     borderColor: C.red,
     alignItems: "center",
@@ -552,7 +556,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
     minHeight: 46,
-    borderRadius: 12,
+    borderRadius: R.control,
     borderWidth: 1,
     borderColor: C.border,
     marginTop: 6,

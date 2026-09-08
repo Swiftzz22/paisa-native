@@ -3,7 +3,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { tapLight, tapSelection } from "./haptics";
 
 export type CustomRange = { from: Date; to: Date };
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   },
   chip: {
     backgroundColor: C.card,
-    borderRadius: 999,
+    borderRadius: R.pill,
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   field: {
     flex: 1,
     backgroundColor: C.card,
-    borderRadius: 12,
+    borderRadius: R.control,
     borderWidth: 1,
     borderColor: "transparent",
     padding: 12,
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   footer: { padding: 18 },
   apply: {
     backgroundColor: C.accent,
-    borderRadius: 14,
+    borderRadius: R.control,
     minHeight: 50,
     paddingVertical: 12,
     alignItems: "center",

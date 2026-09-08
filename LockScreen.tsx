@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { biometricLabel, setLockEnabled, type AuthOutcome } from "./biometrics";
 
 /**
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   logo: {
     width: 64,
     height: 64,
-    borderRadius: 20,
+    borderRadius: R.card,
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     minHeight: 52,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: R.control,
     backgroundColor: C.accent,
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },

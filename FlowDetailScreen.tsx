@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { inr, relativeDate, categoryColor } from "./format";
 import type { Txn } from "./api";
 
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingBottom: 6,
   },
-  sectionDot: { width: 8, height: 8, borderRadius: 4 },
+  sectionDot: { width: 8, height: 8, borderRadius: R.pill },
   sectionTitle: { flex: 1, fontSize: 14, fontWeight: "600", color: C.text },
   sectionCount: { fontSize: 11, color: C.subtle },
   sectionTotal: { fontSize: 13, color: C.muted, fontWeight: "500" },

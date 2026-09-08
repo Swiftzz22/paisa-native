@@ -11,7 +11,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { tapLight, tapSelection } from "./haptics";
 
 type Page = {
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   badge: {
     width: 72,
     height: 72,
-    borderRadius: 22,
+    borderRadius: R.card,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 26,
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   dot: {
     width: 6,
     height: 6,
-    borderRadius: 3,
+    borderRadius: R.pill,
     backgroundColor: C.border,
   },
   dotActive: { backgroundColor: C.accent, width: 18 },
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   cta: {
     minHeight: 54,
     paddingVertical: 12,
-    borderRadius: 15,
+    borderRadius: R.control,
     backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",

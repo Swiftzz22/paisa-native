@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { inr, inrCompact } from "./format";
 import { tapSelection } from "./haptics";
 import type { MonthlyBar } from "./api";
@@ -92,7 +92,7 @@ export function MonthlyTrend({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: C.card,
-    borderRadius: 20,
+    borderRadius: R.card,
     borderWidth: 0.5,
     borderColor: C.border,
     padding: 18,

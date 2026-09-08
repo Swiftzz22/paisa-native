@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { tapSelection } from "./haptics";
 
 export type CategoryOption = { id: string; label: string; depth: 0 | 1 };
@@ -143,7 +143,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: C.card,
-    borderRadius: 12,
+    borderRadius: R.control,
     paddingHorizontal: 12,
     minHeight: 44,
     paddingVertical: 8,

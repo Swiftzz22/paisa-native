@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { C } from "./theme";
+import { C, R, R_INNER, SPACE } from "./theme";
 import { tapLight } from "./haptics";
 
 /**
@@ -156,16 +156,17 @@ export function GettingStarted({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: C.card,
-    borderRadius: 20,
+    borderRadius: R.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    padding: 22,
+    padding: SPACE.card,
     marginTop: 10,
   },
+  // One card-padding in from the card's top-left, so the two corners nest.
   badge: {
     width: 46,
     height: 46,
-    borderRadius: 15,
+    borderRadius: R_INNER,
     backgroundColor: C.accent + "1f",
     alignItems: "center",
     justifyContent: "center",
@@ -180,7 +181,7 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 48,
     paddingVertical: 11,
-    borderRadius: 13,
+    borderRadius: R_INNER,
     backgroundColor: C.accent,
     marginTop: 20,
   },
@@ -192,7 +193,7 @@ const styles = StyleSheet.create({
     gap: 8,
     minHeight: 48,
     paddingVertical: 11,
-    borderRadius: 13,
+    borderRadius: R_INNER,
     backgroundColor: C.bg,
     marginTop: 10,
   },
@@ -207,11 +208,11 @@ const styles = StyleSheet.create({
   progressTrack: {
     flex: 1,
     height: 6,
-    borderRadius: 3,
+    borderRadius: R.pill,
     backgroundColor: C.border,
     overflow: "hidden",
   },
-  progressFill: { height: "100%", borderRadius: 3, backgroundColor: C.text },
+  progressFill: { height: "100%", borderRadius: R.pill, backgroundColor: C.text },
   progressText: { color: C.subtle, fontSize: 11 },
   steps: { gap: 6, marginBottom: 14 },
   stepRow: { flexDirection: "row", alignItems: "center", gap: 8 },

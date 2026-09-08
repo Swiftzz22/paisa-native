@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { API_BASE } from "./api";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { signInWithGoogle } from "./googleSignIn";
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   logo: {
     width: 60,
     height: 60,
-    borderRadius: 18,
+    borderRadius: R.card,
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     gap: 10,
     minHeight: 54,
     paddingVertical: 12,
-    borderRadius: 15,
+    borderRadius: R.control,
     backgroundColor: C.accent,
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },

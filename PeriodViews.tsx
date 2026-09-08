@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import { C } from "./theme";
+import { C, R, concentric } from "./theme";
 import { inr } from "./format";
 import type { DayTotal, Highlight, Period } from "./api";
 import { dateKey, type PeriodWindow } from "./period";
@@ -417,6 +417,20 @@ export function WeekStrip({
   );
 }
 
+/**
+ * Corner geometry for this file. Each pair is a container radius and the gap
+ * its children sit at, so `concentric()` can derive the inner radius instead
+ * of it being written down twice and drifting apart.
+ */
+/** Gap between the period picker's edge and the calendar button inside it. */
+const PICKER_GAP = 6;
+/** The date-picker sheet. Padding stays small so a month grid still fits. */
+const SHEET_R = 20;
+const SHEET_PAD = 10;
+/** The calendar/week grid card and its day cells. */
+const GRID_R = 16;
+const GRID_PAD = 10;
+
 const styles = StyleSheet.create({
   pressed: { opacity: 0.6 },
 
@@ -427,8 +441,11 @@ const styles = StyleSheet.create({
     gap: 10,
     minHeight: 56,
     paddingLeft: 14,
-    paddingRight: 8,
-    borderRadius: 14,
+    // 6 on every side of the button, so one concentric radius describes all
+    // four of its corners. At 8 the gap differed horizontally and vertically
+    // and no single radius could follow the outer curve.
+    paddingRight: PICKER_GAP,
+    borderRadius: R.control,
     borderWidth: 1,
     borderColor: C.border,
     backgroundColor: C.card,
@@ -436,7 +453,7 @@ const styles = StyleSheet.create({
   calBtn: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: concentric(R.control, PICKER_GAP),
     borderWidth: 1,
     borderColor: C.border,
     alignItems: "center",
@@ -456,10 +473,10 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 420,
     backgroundColor: C.card,
-    borderRadius: 20,
+    borderRadius: SHEET_R,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 10,
+    padding: SHEET_PAD,
   },
   sheetTitle: {
     color: C.text,
@@ -474,7 +491,7 @@ const styles = StyleSheet.create({
   sheetBtn: {
     flex: 1,
     minHeight: 44,
-    borderRadius: 12,
+    borderRadius: concentric(SHEET_R, SHEET_PAD),
     borderWidth: 1,
     borderColor: C.border,
     alignItems: "center",
@@ -523,7 +540,7 @@ const styles = StyleSheet.create({
   hlIcon: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: R.pill,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -536,10 +553,10 @@ const styles = StyleSheet.create({
   card: {
     marginTop: 12,
     backgroundColor: C.card,
-    borderRadius: 16,
+    borderRadius: GRID_R,
     borderWidth: 1,
     borderColor: C.border,
-    padding: 10,
+    padding: GRID_PAD,
   },
   calRow: { flexDirection: "row", marginBottom: 4 },
   calHead: {
@@ -555,14 +572,14 @@ const styles = StyleSheet.create({
     minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: concentric(GRID_R, GRID_PAD),
     paddingVertical: 3,
   },
   weekCell: {
     width: `${100 / 7}%`,
     minHeight: 44,
     alignItems: "center",
-    borderRadius: 8,
+    borderRadius: concentric(GRID_R, GRID_PAD),
     paddingVertical: 3,
   },
   cellDay: { color: C.muted, fontSize: 11 },
@@ -570,7 +587,7 @@ const styles = StyleSheet.create({
   inDot: {
     width: 4,
     height: 4,
-    borderRadius: 2,
+    borderRadius: R.pill,
     backgroundColor: C.green,
     marginTop: 2,
   },

@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { C } from "./theme";
+import { C, R } from "./theme";
 import { AuthError, ask } from "./api";
 import { tapLight } from "./haptics";
 
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    borderRadius: 12,
+    borderRadius: R.control,
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    borderRadius: 22,
+    borderRadius: R.pill,
     paddingHorizontal: 16,
     paddingVertical: 10,
     color: C.text,
@@ -210,7 +210,7 @@ const styles = StyleSheet.create({
   sendBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: R.pill,
     backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",

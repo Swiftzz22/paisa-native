@@ -13,7 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { C } from "./theme";
+import { C, R, R_INNER, R_THUMB, SPACE } from "./theme";
 import { inr } from "./format";
 import {
   AuthError,
@@ -307,11 +307,11 @@ const styles = StyleSheet.create({
   sheetWrap: { maxHeight: "92%" },
   sheet: {
     backgroundColor: C.bg,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: R.card,
+    borderTopRightRadius: R.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    paddingHorizontal: 20,
+    paddingHorizontal: SPACE.card,
     paddingTop: 8,
     paddingBottom: 20,
   },
@@ -319,7 +319,7 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     width: 40,
     height: 4,
-    borderRadius: 2,
+    borderRadius: R.pill,
     backgroundColor: C.border,
     marginBottom: 12,
   },
@@ -336,7 +336,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     backgroundColor: C.card,
-    borderRadius: 12,
+    borderRadius: R_INNER,
     paddingHorizontal: 14,
     minHeight: 50,
   },
@@ -349,11 +349,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 5,
     backgroundColor: C.card,
-    borderRadius: 12,
-    padding: 4,
+    borderRadius: R.control,
+    padding: SPACE.track,
     marginBottom: 20,
   },
-  typeBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 9 },
+  // The thumb sits one track-padding inside the track. It was 9 against a
+  // track of 12 with 4 of padding — one short, which shows up as a corner
+  // that does not quite follow the one behind it.
+  typeBtn: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: R_THUMB },
   typeBtnActive: { backgroundColor: C.card2, borderWidth: 0.5, borderColor: C.border },
   typeText: { color: C.muted, fontSize: 14 },
   typeTextActive: { color: C.text, fontWeight: "600" },
@@ -378,7 +381,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    borderRadius: 12,
+    borderRadius: R_INNER,
     paddingHorizontal: 14,
     paddingVertical: 13,
     color: C.text,
@@ -389,7 +392,7 @@ const styles = StyleSheet.create({
     backgroundColor: C.card,
     borderWidth: 0.5,
     borderColor: C.border,
-    borderRadius: 20,
+    borderRadius: R.pill,
     paddingHorizontal: 14,
     paddingVertical: 9,
   },
@@ -401,7 +404,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     minHeight: 52,
     paddingVertical: 12,
-    borderRadius: 14,
+    borderRadius: R_INNER,
     backgroundColor: C.accent,
     alignItems: "center",
     justifyContent: "center",
