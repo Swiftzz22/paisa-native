@@ -16,6 +16,7 @@ import {
 } from "./api";
 import {
   authenticate,
+  type AuthOutcome,
   hasSeenIntro,
   markIntroSeen,
   markSynced,
@@ -162,21 +163,31 @@ function BiometricGate({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, []);
 
-  const unlock = useCallback(async () => {
-    if (authing.current) return;
+  const unlock = useCallback(async (): Promise<AuthOutcome> => {
+    // A second prompt while one is already up is rejected by iOS as a failure,
+    // so report the in-flight attempt as a cancel rather than an error.
+    if (authing.current) return { status: "cancelled" };
     authing.current = true;
     try {
-      if (await authenticate()) {
+      const outcome = await authenticate();
+      if (outcome.status === "ok") {
         unlockedAt.current = Date.now();
         leftAt.current = null;
         setLocked(false);
       }
+      return outcome;
     } finally {
       // Keep the guard up briefly so the return-from-prompt event is ignored.
       setTimeout(() => {
         authing.current = false;
       }, 600);
     }
+  }, []);
+
+  const skipLock = useCallback(() => {
+    unlockedAt.current = Date.now();
+    leftAt.current = null;
+    setLocked(false);
   }, []);
 
   if (locked === null) {
@@ -186,7 +197,7 @@ function BiometricGate({ children }: { children: ReactNode }) {
       </View>
     );
   }
-  if (locked) return <LockScreen onUnlock={unlock} />;
+  if (locked) return <LockScreen onUnlock={unlock} onSkipLock={skipLock} />;
   return <>{children}</>;
 }
 

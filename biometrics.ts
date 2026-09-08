@@ -84,17 +84,82 @@ export async function shouldLock(): Promise<boolean> {
   return (await isBiometricAvailable()) && (await getLockEnabled());
 }
 
-/** Prompt for Face ID / Touch ID (with device-passcode fallback). */
-export async function authenticate(): Promise<boolean> {
+export type AuthOutcome =
+  /** Unlocked. */
+  | { status: "ok" }
+  /** The person dismissed the sheet. Not a failure — say nothing. */
+  | { status: "cancelled" }
+  /** Face ID could not be used at all. `reason` is for the person, not the log. */
+  | { status: "unavailable"; reason: string }
+  /** The scan ran and did not match. Trying again is worth doing. */
+  | { status: "failed"; reason: string };
+
+/**
+ * Prompt for Face ID / Touch ID, falling back to the device passcode.
+ *
+ * Every failure used to collapse into `false`, which meant a denied Face ID
+ * permission, a lockout after five bad scans, and a cancelled sheet all looked
+ * identical from the lock screen: a button that did nothing. The caller needs
+ * to tell them apart, because two of those are not retryable.
+ *
+ * `disableDeviceFallback` stays false so iOS offers the passcode itself after a
+ * few misses — without it a face the sensor stops recognising (a mask, poor
+ * light, a sibling's phone case over the TrueDepth camera) has no way through
+ * at all.
+ */
+export async function authenticate(): Promise<AuthOutcome> {
   try {
     const res = await LocalAuthentication.authenticateAsync({
       promptMessage: "Unlock paisa",
-      fallbackLabel: "Use passcode",
       cancelLabel: "Cancel",
+      disableDeviceFallback: false,
     });
-    return res.success;
+    if (res.success) return { status: "ok" };
+
+    switch (res.error) {
+      case "user_cancel":
+      case "app_cancel":
+      case "system_cancel":
+        return { status: "cancelled" };
+
+      // Hardware is present and enrolled, yet iOS still refuses: on a real
+      // build that almost always means Face ID was denied for this app at the
+      // first prompt. Only Settings can undo it.
+      case "not_available":
+        return {
+          status: "unavailable",
+          reason:
+            "iOS is not letting paisa use Face ID. Open Settings › paisa and turn Face ID on.",
+        };
+
+      case "not_enrolled":
+        return {
+          status: "unavailable",
+          reason: "No face or fingerprint is set up on this iPhone yet.",
+        };
+
+      case "passcode_not_set":
+        return {
+          status: "unavailable",
+          reason: "This iPhone has no passcode, so there is nothing to unlock with.",
+        };
+
+      // Five failed scans in a row. iOS disables Face ID until the passcode is
+      // entered once — which the fallback sheet handles, so this is retryable.
+      case "lockout":
+        return {
+          status: "failed",
+          reason: "Too many attempts. Try again and enter your passcode.",
+        };
+
+      case "authentication_failed":
+        return { status: "failed", reason: "That didn't match. Try again." };
+
+      default:
+        return { status: "failed", reason: "Couldn't unlock. Try again." };
+    }
   } catch {
-    return false;
+    return { status: "failed", reason: "Couldn't unlock. Try again." };
   }
 }
 
