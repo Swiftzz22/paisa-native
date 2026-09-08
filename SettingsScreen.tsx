@@ -26,6 +26,7 @@ import { inr } from "./format";
 import { biometricLabel, getLockEnabled, isBiometricAvailable, setLockEnabled } from "./biometrics";
 import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
+import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
 
 const WEB_LINKS: { icon: string; label: string; path: string }[] = [
   { icon: "grid-outline", label: "Categories", path: "/settings/categories" },
@@ -52,6 +53,38 @@ export function SettingsScreen({
   const [deleting, setDeleting] = useState(false);
   const [imports, setImports] = useState<ImportSummary[]>([]);
   const [busy, setBusy] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleLinked, setAppleLinked] = useState(false);
+  const [linkingApple, setLinkingApple] = useState(false);
+
+  useEffect(() => {
+    isAppleSignInAvailable().then(setAppleAvailable);
+  }, []);
+
+  // Reflect what the server says, so the row does not offer a link to someone
+  // who already has one just because this screen was reopened.
+  useEffect(() => {
+    if (user?.appleLinked) setAppleLinked(true);
+  }, [user?.appleLinked]);
+
+  async function linkApple() {
+    setLinkingApple(true);
+    const res = await linkAppleId(token);
+    setLinkingApple(false);
+    if (res.ok) {
+      setAppleLinked(true);
+      notifySuccess();
+      Alert.alert(
+        "Apple ID linked",
+        "Sign in with Apple will now open this account."
+      );
+      return;
+    }
+    // Dismissing Apple's sheet is a choice, not something to report back.
+    if (res.cancelled) return;
+    notifyError();
+    Alert.alert("Couldn't link", res.message ?? "Please try again.");
+  }
 
   const loadImports = useCallback(() => {
     fetchImports(token)
@@ -284,6 +317,37 @@ export function SettingsScreen({
           thumbColor="#fff"
         />
       </View>
+
+      {/* Signing in with Apple always creates a fresh account — it cannot
+          safely recognise an existing one. Linking from in here is the way the
+          two become the same account, and it has to be done while signed in,
+          which is what makes the consent real. */}
+      {appleAvailable ? (
+        <View style={[styles.card, { marginTop: 8 }]}>
+          <Pressable
+            style={styles.row}
+            onPress={linkApple}
+            disabled={linkingApple}
+          >
+            <Ionicons name="logo-apple" size={20} color={C.muted} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>
+                {linkingApple ? "Linking…" : "Link your Apple ID"}
+              </Text>
+              <Text style={styles.hint}>
+                {appleLinked
+                  ? "Linked — Sign in with Apple opens this account"
+                  : "So Sign in with Apple brings you here, not to a new account"}
+              </Text>
+            </View>
+            {appleLinked ? (
+              <Ionicons name="checkmark-circle" size={20} color={C.green} />
+            ) : (
+              <Ionicons name="chevron-forward" size={18} color={C.subtle} />
+            )}
+          </Pressable>
+        </View>
+      ) : null}
 
       <Text style={styles.sectionLabel}>Add transactions</Text>
       <View style={styles.card}>

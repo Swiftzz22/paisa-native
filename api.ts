@@ -4,7 +4,12 @@ export const API_BASE = "https://paisa-tawny.vercel.app";
 const TOKEN_KEY = "paisa_mobile_token";
 
 export type Dashboard = {
-  user: { name: string | null; email: string };
+  user: {
+    name: string | null;
+    email: string;
+    /** Whether Sign in with Apple already opens this account. */
+    appleLinked?: boolean;
+  };
   /** Whether a Gmail account is linked, so an empty screen can explain itself. */
   emailConnected?: boolean;
   monthLabel: string;

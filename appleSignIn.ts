@@ -131,6 +131,104 @@ export async function signInWithApple(): Promise<SignInResult> {
   }
 }
 
+/**
+ * Attach an Apple ID to the account already signed in.
+ *
+ * Signing in with Apple never joins itself to an existing account — Apple's
+ * relay addresses match nothing, and a shared real address would let whoever
+ * holds that Apple ID into someone else's data. So the join has to be made from
+ * inside the account, and this is that: same Apple sheet, same server-issued
+ * nonce, but the request carries the current session and links rather than
+ * signs in. Afterwards, signing in with Apple lands in this account.
+ */
+export async function linkAppleId(token: string): Promise<SignInResult> {
+  if (!(await isAppleSignInAvailable())) {
+    return {
+      ok: false,
+      cancelled: false,
+      message: "Sign in with Apple isn't available on this device.",
+    };
+  }
+
+  let nonce: string;
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/apple/nonce`, {
+      method: "POST",
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        cancelled: false,
+        message: `Couldn't start (server ${res.status}).`,
+      };
+    }
+    nonce = ((await res.json()) as { nonce: string }).nonce;
+  } catch {
+    return {
+      ok: false,
+      cancelled: false,
+      message: "Couldn't reach paisa. Check your connection.",
+    };
+  }
+
+  let credential: AppleAuthentication.AppleAuthenticationCredential;
+  try {
+    credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [AppleAuthentication.AppleAuthenticationScope.EMAIL],
+      nonce,
+    });
+  } catch (e) {
+    const code = (e as { code?: string })?.code;
+    if (code === "ERR_REQUEST_CANCELED") return { ok: false, cancelled: true };
+    return {
+      ok: false,
+      cancelled: false,
+      message: `Apple didn't complete (${code ?? "no code"}).`,
+    };
+  }
+
+  if (!credential.identityToken) {
+    return {
+      ok: false,
+      cancelled: false,
+      message: "Apple didn't return a token. Please try again.",
+    };
+  }
+
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/apple/link`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        identityToken: credential.identityToken,
+        authorizationCode: credential.authorizationCode ?? undefined,
+        nonce,
+      }),
+    });
+    const body = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+    };
+    if (!res.ok || !body.ok) {
+      return {
+        ok: false,
+        cancelled: false,
+        message: body.error ?? `Couldn't link (${res.status}).`,
+      };
+    }
+    return { ok: true };
+  } catch {
+    return {
+      ok: false,
+      cancelled: false,
+      message: "Couldn't reach paisa. Check your connection.",
+    };
+  }
+}
+
 /** Whether to show the button at all — iOS 13+ hardware only. */
 export async function isAppleSignInAvailable(): Promise<boolean> {
   try {
