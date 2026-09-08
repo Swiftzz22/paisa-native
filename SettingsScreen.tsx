@@ -28,6 +28,22 @@ import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
 import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
 
+/**
+ * What to show where an email address goes.
+ *
+ * Hide My Email gives us nothing usable, so the account carries a generated
+ * `apple_…@appleid.local` placeholder. Printing that as if it were the person's
+ * address is worse than saying nothing: it looks like the app has attached them
+ * to some stranger's address.
+ */
+function accountLabel(email: string | undefined): string {
+  if (!email) return "Signed in";
+  if (email.toLowerCase().endsWith("@appleid.local")) {
+    return "Signed in with Apple · email hidden";
+  }
+  return email;
+}
+
 const WEB_LINKS: { icon: string; label: string; path: string }[] = [
   { icon: "grid-outline", label: "Categories", path: "/settings/categories" },
   { icon: "wallet-outline", label: "Budgets", path: "/settings/budgets" },
@@ -216,6 +232,12 @@ export function SettingsScreen({
     const email = user?.email;
     if (!email) return;
 
+    // Hide My Email leaves the account with an address this app invented, which
+    // nobody has ever seen. Asking for it turns the confirmation into a locked
+    // door, so a placeholder account confirms with the word DELETE instead.
+    const placeholder = email.toLowerCase().endsWith("@appleid.local");
+    const expected = placeholder ? "delete" : email.toLowerCase();
+
     Alert.alert(
       "Delete your account?",
       "Every transaction, stored bank email and setting is removed permanently. This cannot be undone.",
@@ -232,24 +254,28 @@ export function SettingsScreen({
               return;
             }
             Alert.prompt(
-              "Type your email to confirm",
-              email,
+              placeholder ? "Type DELETE to confirm" : "Type your email to confirm",
+              placeholder
+                ? "This account was created by Sign in with Apple and has no email address of its own."
+                : email,
               [
                 { text: "Cancel", style: "cancel" },
                 {
                   text: "Delete forever",
                   style: "destructive",
                   onPress: async (typed?: string) => {
-                    if ((typed ?? "").trim().toLowerCase() !== email.toLowerCase()) {
+                    if ((typed ?? "").trim().toLowerCase() !== expected) {
                       Alert.alert(
                         "That didn't match",
-                        "Nothing was deleted."
+                        placeholder
+                          ? "Type DELETE exactly. Nothing was deleted."
+                          : "Nothing was deleted."
                       );
                       return;
                     }
                     setDeleting(true);
                     try {
-                      await deleteAccount(token, email);
+                      await deleteAccount(token, expected);
                       notifySuccess();
                       // The account is gone; drop the local token and return
                       // to the connect screen.
@@ -288,7 +314,7 @@ export function SettingsScreen({
         </View>
         <View style={{ flex: 1 }}>
           {user?.name ? <Text style={styles.name}>{user.name}</Text> : null}
-          <Text style={styles.email}>{user?.email ?? "Signed in"}</Text>
+          <Text style={styles.email}>{accountLabel(user?.email)}</Text>
         </View>
       </View>
 
