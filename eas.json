@@ -26,7 +26,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "sania.kothari@gmail.com"
+        "appleId": "sania.kothari@gmail.com",
+        "ascAppId": "6809769696",
+        "appleTeamId": "FP3T7C2Z83"
       }
     }
   }
