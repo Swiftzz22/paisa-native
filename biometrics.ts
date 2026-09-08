@@ -117,10 +117,20 @@ export async function authenticate(): Promise<AuthOutcome> {
     if (res.success) return { status: "ok" };
 
     switch (res.error) {
+      // Tapping Cancel is a choice. Saying anything about it would be noise.
       case "user_cancel":
+        return { status: "cancelled" };
+
+      // iOS pulled the sheet away by itself. This is what a prompt raised
+      // before the app is active looks like, and staying silent about it is
+      // exactly what made the old bug unreadable — it is indistinguishable
+      // from a face that didn't match unless it is named.
       case "app_cancel":
       case "system_cancel":
-        return { status: "cancelled" };
+        return {
+          status: "failed",
+          reason: "iOS closed the Face ID prompt before it could run. Tap to try again.",
+        };
 
       // Hardware is present and enrolled, yet iOS still refuses: on a real
       // build that almost always means Face ID was denied for this app at the
@@ -155,11 +165,20 @@ export async function authenticate(): Promise<AuthOutcome> {
       case "authentication_failed":
         return { status: "failed", reason: "That didn't match. Try again." };
 
+      // Nothing this code knows how to explain. Show iOS's own word for it
+      // rather than a generic apology: there is no console to read on a
+      // TestFlight build, so an unnamed failure is a failure nobody can chase.
       default:
-        return { status: "failed", reason: "Couldn't unlock. Try again." };
+        return {
+          status: "failed",
+          reason: `Couldn't unlock (${res.error ?? "no error reported"}). Try again.`,
+        };
     }
-  } catch {
-    return { status: "failed", reason: "Couldn't unlock. Try again." };
+  } catch (e) {
+    return {
+      status: "failed",
+      reason: `Couldn't unlock (${(e as Error)?.message ?? "threw"}). Try again.`,
+    };
   }
 }
 
