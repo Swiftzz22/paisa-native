@@ -35,7 +35,11 @@ export async function signInWithApple(): Promise<SignInResult> {
       method: "POST",
     });
     if (!res.ok) {
-      return { ok: false, cancelled: false, message: "Couldn't start sign-in." };
+      return {
+        ok: false,
+        cancelled: false,
+        message: `Couldn't start sign-in (server ${res.status}).`,
+      };
     }
     nonce = ((await res.json()) as { nonce: string }).nonce;
   } catch {
@@ -58,13 +62,19 @@ export async function signInWithApple(): Promise<SignInResult> {
   } catch (e) {
     // Dismissing the sheet is a choice, not a failure, and must not raise an
     // error banner.
-    if ((e as { code?: string })?.code === "ERR_REQUEST_CANCELED") {
+    const code = (e as { code?: string })?.code;
+    if (code === "ERR_REQUEST_CANCELED") {
       return { ok: false, cancelled: true };
     }
+    // Name the code. A TestFlight build has no console, so "didn't complete"
+    // was a dead end — and the codes here mean very different things:
+    // ERR_REQUEST_UNKNOWN is usually the Sign In with Apple capability missing
+    // from the App ID, while ERR_REQUEST_NOT_HANDLED is a device/network
+    // problem the person can actually retry past.
     return {
       ok: false,
       cancelled: false,
-      message: "Apple sign-in didn't complete. Please try again.",
+      message: `Apple sign-in didn't complete (${code ?? (e as Error)?.message ?? "no code"}).`,
     };
   }
 
@@ -98,12 +108,16 @@ export async function signInWithApple(): Promise<SignInResult> {
         fullName: fullName || undefined,
       }),
     });
-    const body = (await res.json()) as { token?: string; error?: string };
+    const body = (await res
+      .json()
+      .catch(() => ({}))) as { token?: string; error?: string };
     if (!res.ok || !body.token) {
+      // The status separates "Apple's token was rejected" (401) from "the
+      // account couldn't be created" (500), which read identically otherwise.
       return {
         ok: false,
         cancelled: false,
-        message: body.error ?? "Couldn't sign you in.",
+        message: `${body.error ?? "Couldn't sign you in."} (${res.status})`,
       };
     }
     await saveToken(body.token);
