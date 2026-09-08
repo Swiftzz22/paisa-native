@@ -110,7 +110,7 @@ export async function signInWithApple(): Promise<SignInResult> {
     });
     const body = (await res
       .json()
-      .catch(() => ({}))) as { token?: string; error?: string };
+      .catch(() => ({}))) as { token?: string; isNew?: boolean; error?: string };
     if (!res.ok || !body.token) {
       // The status separates "Apple's token was rejected" (401) from "the
       // account couldn't be created" (500), which read identically otherwise.
@@ -121,7 +121,7 @@ export async function signInWithApple(): Promise<SignInResult> {
       };
     }
     await saveToken(body.token);
-    return { ok: true };
+    return { ok: true, isNew: body.isNew === true };
   } catch {
     return {
       ok: false,

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Pressable,
   StyleSheet,
@@ -10,7 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { C, R } from "./theme";
-import { API_BASE } from "./api";
+import { API_BASE, clearToken } from "./api";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { signInWithGoogle } from "./googleSignIn";
 import { isAppleSignInAvailable, signInWithApple } from "./appleSignIn";
@@ -45,7 +46,35 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
     const result = await signInWithApple();
     setBusy(false);
 
-    if (result.ok) return onConnected();
+    if (result.ok) {
+      // A first Apple sign-in always makes a new account — it cannot safely
+      // recognise an existing one, because Apple's relay address matches
+      // nothing and a shared real address would be an account takeover. Said
+      // plainly here, at the one moment it can be acted on: otherwise this is
+      // an empty app that looks like lost data, and the way back (sign out,
+      // sign in with Google, link in Settings) is not something anyone would
+      // guess at.
+      if (result.isNew) {
+        Alert.alert(
+          "New paisa account created",
+          "Sign in with Apple couldn't tell whether you already had an account, so it made a new one.\n\nIf you've used paisa before, sign in with Google instead — then Settings › Link your Apple ID makes Apple open that account from now on.",
+          [
+            { text: "Start fresh", style: "cancel", onPress: onConnected },
+            {
+              text: "I have an account",
+              onPress: async () => {
+                // Drop the brand-new session before offering Google, so the
+                // next sign-in starts clean rather than layering on top of it.
+                await clearToken();
+                signIn();
+              },
+            },
+          ]
+        );
+        return;
+      }
+      return onConnected();
+    }
     if (result.cancelled) return;
     notifyError();
     setError(result.message);
@@ -92,7 +121,7 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
             buttonStyle={
               AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
             }
-            cornerRadius={12}
+            cornerRadius={R.control}
             style={styles.appleButton}
             onPress={busy ? () => {} : signInApple}
           />

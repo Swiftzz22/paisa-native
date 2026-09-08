@@ -75,7 +75,13 @@ export async function connectGmail(token: string): Promise<SignInResult> {
 }
 
 export type SignInResult =
-  | { ok: true }
+  /**
+   * `isNew` says the sign-in created an account rather than opening one. Only
+   * Apple sets it, and only Apple needs it: a first Apple sign-in always makes
+   * a fresh account, so someone who already had one lands in an empty app with
+   * no hint that their data is still sitting in the account they signed up with.
+   */
+  | { ok: true; isNew?: boolean }
   | { ok: false; cancelled: true }
   | { ok: false; cancelled: false; message: string };
 
