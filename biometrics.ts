@@ -165,20 +165,18 @@ export async function authenticate(): Promise<AuthOutcome> {
       case "authentication_failed":
         return { status: "failed", reason: "That didn't match. Try again." };
 
-      // Nothing this code knows how to explain. Show iOS's own word for it
-      // rather than a generic apology: there is no console to read on a
-      // TestFlight build, so an unnamed failure is a failure nobody can chase.
+      // Anything else. The raw iOS code used to be shown here, because on a
+      // TestFlight build there is no console and an unnamed failure is one
+      // nobody can chase — it is how the launch race was found. It goes to the
+      // log now that Face ID is confirmed working on a real device; a code in
+      // this sentence would only ever confuse the person reading it.
       default:
-        return {
-          status: "failed",
-          reason: `Couldn't unlock (${res.error ?? "no error reported"}). Try again.`,
-        };
+        console.warn("[biometrics] unhandled:", res.error);
+        return { status: "failed", reason: "Couldn't unlock. Try again." };
     }
   } catch (e) {
-    return {
-      status: "failed",
-      reason: `Couldn't unlock (${(e as Error)?.message ?? "threw"}). Try again.`,
-    };
+    console.warn("[biometrics] threw:", e);
+    return { status: "failed", reason: "Couldn't unlock. Try again." };
   }
 }
 
