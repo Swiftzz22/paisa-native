@@ -38,7 +38,7 @@ export async function signInWithApple(): Promise<SignInResult> {
       return {
         ok: false,
         cancelled: false,
-        message: `Couldn't start sign-in (server ${res.status}).`,
+        message: "Couldn't reach paisa just now. Please try again.",
       };
     }
     nonce = ((await res.json()) as { nonce: string }).nonce;
@@ -66,15 +66,10 @@ export async function signInWithApple(): Promise<SignInResult> {
     if (code === "ERR_REQUEST_CANCELED") {
       return { ok: false, cancelled: true };
     }
-    // Name the code. A TestFlight build has no console, so "didn't complete"
-    // was a dead end — and the codes here mean very different things:
-    // ERR_REQUEST_UNKNOWN is usually the Sign In with Apple capability missing
-    // from the App ID, while ERR_REQUEST_NOT_HANDLED is a device/network
-    // problem the person can actually retry past.
     return {
       ok: false,
       cancelled: false,
-      message: `Apple sign-in didn't complete (${code ?? (e as Error)?.message ?? "no code"}).`,
+      message: "Apple sign-in didn't finish. Please try again.",
     };
   }
 
@@ -112,12 +107,13 @@ export async function signInWithApple(): Promise<SignInResult> {
       .json()
       .catch(() => ({}))) as { token?: string; isNew?: boolean; error?: string };
     if (!res.ok || !body.token) {
-      // The status separates "Apple's token was rejected" (401) from "the
-      // account couldn't be created" (500), which read identically otherwise.
+      // The server writes these for people to read, so pass one through when
+      // it sent one. The bare status code that used to be appended was for me,
+      // during the RS256 hunt, and has no business on a sign-in screen.
       return {
         ok: false,
         cancelled: false,
-        message: `${body.error ?? "Couldn't sign you in."} (${res.status})`,
+        message: body.error ?? "Couldn't sign you in. Please try again.",
       };
     }
     await saveToken(body.token);
@@ -159,7 +155,7 @@ export async function linkAppleId(token: string): Promise<SignInResult> {
       return {
         ok: false,
         cancelled: false,
-        message: `Couldn't start (server ${res.status}).`,
+        message: "Couldn't reach paisa just now. Please try again.",
       };
     }
     nonce = ((await res.json()) as { nonce: string }).nonce;
@@ -183,7 +179,7 @@ export async function linkAppleId(token: string): Promise<SignInResult> {
     return {
       ok: false,
       cancelled: false,
-      message: `Apple didn't complete (${code ?? "no code"}).`,
+      message: "That didn't finish. Please try again.",
     };
   }
 
@@ -216,7 +212,7 @@ export async function linkAppleId(token: string): Promise<SignInResult> {
       return {
         ok: false,
         cancelled: false,
-        message: body.error ?? `Couldn't link (${res.status}).`,
+        message: body.error ?? "Couldn't link your Apple ID. Please try again.",
       };
     }
     return { ok: true };
