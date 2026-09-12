@@ -28,6 +28,7 @@ import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
 import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
 import { PlusSheet } from "./PlusSheet";
+import { isPlusConfigured } from "./plus";
 
 /**
  * What to show where an email address goes.
@@ -424,6 +425,11 @@ export function SettingsScreen({
       {/* The one place someone can find Plus without being refused something
           first. A subscription that can only be discovered by hitting a wall
           is a subscription nobody chooses deliberately. */}
+      {/* Hidden until the store is actually wired up. A row that opens a sheet
+          saying "Plus isn't available yet" is a dead end, and the reviewer who
+          finds it is the one person guaranteed to tap everything. */}
+      {isPlusConfigured() ? (
+      <>
       <Text style={styles.sectionLabel}>Subscription</Text>
       <View style={styles.card}>
         <Pressable
@@ -453,6 +459,8 @@ export function SettingsScreen({
           )}
         </Pressable>
       </View>
+      </>
+      ) : null}
 
       {/* Removing data without removing the account. Deleting the account was
           the only undo available, which is far too blunt an answer to
