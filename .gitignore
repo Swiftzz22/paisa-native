@@ -32,6 +32,10 @@ yarn-error.*
 
 # local env files
 .env*.local
+# Plain .env too. Only *.local was ignored, which is a trap: the obvious
+# filename to reach for is `.env`, this repo is public, and the first thing
+# anyone puts there is a key.
+.env
 
 # typescript
 *.tsbuildinfo
