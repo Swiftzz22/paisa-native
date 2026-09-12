@@ -27,8 +27,7 @@ import { biometricLabel, getLockEnabled, isBiometricAvailable, setLockEnabled } 
 import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
 import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
-import { TipJarSheet } from "./TipJarSheet";
-import { hasTipped } from "./tipJar";
+import { PlusSheet } from "./PlusSheet";
 
 /**
  * What to show where an email address goes.
@@ -71,8 +70,8 @@ export function SettingsScreen({
   const [deleting, setDeleting] = useState(false);
   const [imports, setImports] = useState<ImportSummary[]>([]);
   const [busy, setBusy] = useState(false);
-  const [tipOpen, setTipOpen] = useState(false);
-  const [tipped, setTipped] = useState(false);
+  const [plusOpen, setPlusOpen] = useState(false);
+  const plus = user?.plus === true;
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [appleLinked, setAppleLinked] = useState(false);
   const [linkingApple, setLinkingApple] = useState(false);
@@ -80,11 +79,6 @@ export function SettingsScreen({
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);
   }, []);
-
-  // Re-read on close so the row thanks someone the moment they come back.
-  useEffect(() => {
-    if (!tipOpen) void hasTipped().then(setTipped);
-  }, [tipOpen]);
 
   // Reflect what the server says, so the row does not offer a link to someone
   // who already has one just because this screen was reopened.
@@ -427,24 +421,36 @@ export function SettingsScreen({
         ))}
       </View>
 
-      {/* Asks for nothing and unlocks nothing. It sits after the features so
-          it reads as an afterthought rather than a toll gate — which is what
-          it is. */}
-      <Text style={styles.sectionLabel}>Support</Text>
+      {/* The one place someone can find Plus without being refused something
+          first. A subscription that can only be discovered by hitting a wall
+          is a subscription nobody chooses deliberately. */}
+      <Text style={styles.sectionLabel}>Subscription</Text>
       <View style={styles.card}>
-        <Pressable style={styles.row} onPress={() => { tapLight(); setTipOpen(true); }}>
-          <Ionicons name="heart-outline" size={20} color={C.muted} />
+        <Pressable
+          style={styles.row}
+          onPress={() => {
+            tapLight();
+            setPlusOpen(true);
+          }}
+        >
+          <Ionicons
+            name={plus ? "checkmark-circle" : "sparkles-outline"}
+            size={20}
+            color={plus ? C.green : C.accent}
+          />
           <View style={{ flex: 1 }}>
             <Text style={styles.rowLabel}>
-              {tipped ? "Tip jar" : "Leave a tip"}
+              {plus ? "paisa. plus is active" : "Get paisa. plus"}
             </Text>
             <Text style={styles.hint}>
-              {tipped
-                ? "Thank you — paisa. runs on these"
-                : "paisa. is free. This is only if you want to help"}
+              {plus
+                ? "Email sync, unlimited imports and Ask"
+                : "Automatic email sync, unlimited imports and Ask"}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={C.subtle} />
+          {plus ? null : (
+            <Ionicons name="chevron-forward" size={18} color={C.subtle} />
+          )}
         </Pressable>
       </View>
 
@@ -531,7 +537,16 @@ export function SettingsScreen({
       </View>
 
       <Text style={styles.footer}>paisa · connected to {API_BASE.replace("https://", "")}</Text>
-      <TipJarSheet visible={tipOpen} onClose={() => setTipOpen(false)} />
+      <PlusSheet
+        visible={plusOpen}
+        onClose={() => setPlusOpen(false)}
+        onPurchased={() => {
+          setPlusOpen(false);
+          // The server is the authority and the webhook may still be in
+          // flight, so ask it again rather than flipping a local flag.
+          onImported?.();
+        }}
+      />
     </ScrollView>
   );
 }

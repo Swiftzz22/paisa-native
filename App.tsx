@@ -5,6 +5,7 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { C } from "./theme";
 import {
   AuthError,
+  PaywallError,
   clearToken,
   fetchTransactions,
   getToken,
@@ -35,6 +36,9 @@ import { SettingsScreen } from "./SettingsScreen";
 import { TransactionModal } from "./TransactionModal";
 import { FlowDetailScreen, type Flow } from "./FlowDetailScreen";
 import { TabBar, type TabKey } from "./TabBar";
+import { PlusSheet } from "./PlusSheet";
+import { onShowPaywall } from "./paywallBus";
+import { initPlus, resetPlus } from "./plus";
 
 /** How long the app can be backgrounded before it re-locks. */
 const LOCK_GRACE_MS = 60_000;
@@ -239,6 +243,15 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
   // Ask lost the whole conversation.
   const [visited, setVisited] = useState<Set<TabKey>>(() => new Set(["home"]));
 
+  // The paywall lives here, at the root, because a 402 can come from a
+  // statement import buried in a helper, from Ask, or from anywhere else —
+  // screens that share no ancestor worth threading a callback through.
+  const [paywall, setPaywall] = useState<string | null>(null);
+  useEffect(() => {
+    onShowPaywall((reason) => setPaywall(reason));
+    return () => onShowPaywall(null);
+  }, []);
+
   useEffect(() => {
     setVisited((prev) => (prev.has(tab) ? prev : new Set(prev).add(tab)));
   }, [tab]);
@@ -249,6 +262,13 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
   const [user, setUser] = useState<Dashboard["user"] | null>(null);
+
+  // Tell RevenueCat who this is, using our own user id, so the purchase
+  // webhook can find the row without a mapping table — and so a subscription
+  // follows the account rather than the phone that bought it.
+  useEffect(() => {
+    if (user?.id) void initPlus(user.id);
+  }, [user?.id]);
   const [flow, setFlow] = useState<Flow | null>(null);
 
   // History lives here rather than inside Activity so the spend/income
@@ -269,6 +289,9 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
   }, []);
 
   const signOut = useCallback(async () => {
+    // Forget the account with RevenueCat too, so the next person to sign in on
+    // this phone is not offered — or granted — someone else's subscription.
+    await resetPlus();
     await clearToken();
     onSignOut();
   }, [onSignOut]);
@@ -285,6 +308,8 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
       }
     } catch (e) {
       if (e instanceof AuthError) return signOut();
+      // Sync being a Plus feature is not a failure to report on every launch.
+      if (e instanceof PaywallError) return;
       // Surface the failure instead of leaving the last good result on screen —
       // a silent catch here is why a broken sync looked like "nothing changed".
       setLastSync({
@@ -418,6 +443,18 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
         onEdit={(t) => {
           setFlow(null);
           openEdit(t);
+        }}
+      />
+
+      <PlusSheet
+        visible={paywall !== null}
+        reason={paywall}
+        onClose={() => setPaywall(null)}
+        onPurchased={() => {
+          setPaywall(null);
+          // RevenueCat's webhook decides access, and it may still be in flight.
+          // Refetching is how the app learns the answer rather than assuming it.
+          setVersion((v) => v + 1);
         }}
       />
 

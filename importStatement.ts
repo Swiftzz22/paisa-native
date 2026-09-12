@@ -1,6 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
 import { Alert } from "react-native";
-import { importStatement, AuthError } from "./api";
+import { importStatement, AuthError, PaywallError } from "./api";
 import { notifyError, notifySuccess } from "./haptics";
 
 /**
@@ -71,6 +71,9 @@ export async function pickAndImportStatement(
       onNeedAuth();
       return false;
     }
+    // The paywall sheet is already up; a second alert on top of it would just
+    // be the same refusal twice.
+    if (e instanceof PaywallError) return false;
     notifyError();
     Alert.alert(
       "Couldn't import that",

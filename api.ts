@@ -1,14 +1,19 @@
 import * as SecureStore from "expo-secure-store";
+import { showPaywall } from "./paywallBus";
 
 export const API_BASE = "https://paisa-tawny.vercel.app";
 const TOKEN_KEY = "paisa_mobile_token";
 
 export type Dashboard = {
   user: {
+    /** This account's id — used to identify the app to RevenueCat. */
+    id?: string;
     name: string | null;
     email: string;
     /** Whether Sign in with Apple already opens this account. */
     appleLinked?: boolean;
+    /** Whether paisa. plus is live, as the server sees it. */
+    plus?: boolean;
   };
   /** Whether a Gmail account is linked, so an empty screen can explain itself. */
   emailConnected?: boolean;
@@ -81,10 +86,27 @@ export type NewTxn = {
 
 export class AuthError extends Error {}
 
+/**
+ * The server refused because this needs paisa. plus.
+ *
+ * Distinct from a generic failure so the app can answer with the offer rather
+ * than an error banner — the refusal and the way past it belong together, at
+ * the moment the person actually wanted the thing.
+ */
+export class PaywallError extends Error {}
+
 async function authed<T>(
   token: string,
   path: string,
-  init?: RequestInit
+  init?: RequestInit,
+  /**
+   * Suppress the paywall sheet for a call the person did not make.
+   *
+   * The open-the-app sync is the case: a free account would meet the sheet on
+   * every single launch, which is nagging rather than offering. The request
+   * still fails and the caller still learns why — it just does not interrupt.
+   */
+  opts?: { silentPaywall?: boolean }
 ): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -95,6 +117,20 @@ async function authed<T>(
     },
   });
   if (res.status === 401) throw new AuthError("Token is invalid or expired.");
+  if (res.status === 402) {
+    let msg = "This is part of paisa. plus.";
+    try {
+      const j = await res.json();
+      if (j?.error) msg = String(j.error);
+    } catch {
+      // non-JSON body — the default reads fine
+    }
+    // Raise the offer here so every refused call gets it, however deep the
+    // caller is. The throw still stops the caller; it just no longer has to
+    // decide what a 402 means.
+    if (!opts?.silentPaywall) showPaywall(msg);
+    throw new PaywallError(msg);
+  }
   if (!res.ok) {
     let msg = `Server error (${res.status}).`;
     try {
@@ -343,9 +379,20 @@ export type SyncResult = {
   error?: string | null;
 };
 
-/** Pull the latest bank/UPI emails and parse a batch into transactions. */
+/**
+ * Pull the latest bank/UPI emails and parse a batch into transactions.
+ *
+ * Silent on 402. This runs on every app open, and a free account meeting the
+ * paywall sheet each time would be nagging. Settings says plainly that sync is
+ * part of Plus; that is where the offer belongs.
+ */
 export function syncNow(token: string): Promise<SyncResult> {
-  return authed<SyncResult>(token, "/api/mobile/sync", { method: "POST" });
+  return authed<SyncResult>(
+    token,
+    "/api/mobile/sync",
+    { method: "POST" },
+    { silentPaywall: true }
+  );
 }
 
 export type ImportSummary = {

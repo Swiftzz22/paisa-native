@@ -43,8 +43,7 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-web-browser",
-      "expo-font",
-      "expo-iap"
+      "expo-font"
     ],
     "extra": {
       "eas": {
