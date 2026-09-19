@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -11,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { C, R, R_INNER, SPACE } from "./theme";
 import { notifyError, notifySuccess, tapLight } from "./haptics";
+import { API_BASE } from "./api";
 import {
   buyPlus,
   loadOffers,
@@ -157,12 +159,36 @@ export function PlusSheet({
                     {busy === o.pkg.identifier ? (
                       <ActivityIndicator color={C.text} />
                     ) : (
-                      <Text style={styles.price}>{o.price}</Text>
+                      <Text style={styles.price}>
+                        {o.price}
+                        <Text style={styles.per}>{perPeriod(o.pkg.packageType)}</Text>
+                      </Text>
                     )}
                   </Pressable>
                 ))}
               </View>
             )}
+
+            {/* Guideline 3.1.2 wants this at the point of purchase: that it
+                renews on its own, how to stop it, and working links to the
+                terms and privacy policy. Missing it is among the most common
+                reasons a first subscription is rejected — and it is also just
+                what someone deserves to know before they are charged again. */}
+            <Text style={styles.legal}>
+              Payment is charged to your Apple ID when you confirm. Plus renews
+              automatically at the same price unless you cancel at least 24 hours
+              before the end of the current period. Manage or cancel any time in
+              iPhone Settings › your name › Subscriptions.
+            </Text>
+            <View style={styles.legalLinks}>
+              <Pressable onPress={() => Linking.openURL(`${API_BASE}/terms`)} hitSlop={8}>
+                <Text style={styles.link}>Terms of Use</Text>
+              </Pressable>
+              <Text style={styles.legalDot}>·</Text>
+              <Pressable onPress={() => Linking.openURL(`${API_BASE}/privacy`)} hitSlop={8}>
+                <Text style={styles.link}>Privacy Policy</Text>
+              </Pressable>
+            </View>
 
             {/* Required by App Review, and genuinely needed: a new phone or a
                 reinstall arrives with nothing. */}
@@ -181,7 +207,34 @@ export function PlusSheet({
   );
 }
 
+/** " / year" — so the price never reads without the length it buys. */
+function perPeriod(packageType: string): string {
+  switch (packageType) {
+    case "ANNUAL":
+      return " / year";
+    case "MONTHLY":
+      return " / month";
+    case "SIX_MONTH":
+      return " / 6 months";
+    case "THREE_MONTH":
+      return " / 3 months";
+    default:
+      return "";
+  }
+}
+
 const styles = StyleSheet.create({
+  per: { fontSize: 12, fontWeight: "500", color: C.subtle },
+  legal: { fontSize: 11, lineHeight: 16, color: C.subtle, marginTop: 18 },
+  legalLinks: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+  },
+  legalDot: { color: C.subtle, fontSize: 12 },
+  link: { color: C.muted, fontSize: 12, textDecorationLine: "underline" },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   sheet: {
     maxHeight: "90%",
