@@ -47,17 +47,17 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
     setBusy(false);
 
     if (result.ok) {
-      // A first Apple sign-in always makes a new account — it cannot safely
-      // recognise an existing one, because Apple's relay address matches
-      // nothing and a shared real address would be an account takeover. Said
-      // plainly here, at the one moment it can be acted on: otherwise this is
+      // Sharing a real Apple address now lands straight in the matching
+      // account, so this is reached only by someone who chose Hide My Email —
+      // whose relay address genuinely matches nothing we could recognise.
+      // Worth saying at the one moment it can be acted on: otherwise this is
       // an empty app that looks like lost data, and the way back (sign out,
       // sign in with Google, link in Settings) is not something anyone would
       // guess at.
       if (result.isNew) {
         Alert.alert(
-          "New paisa account created",
-          "Sign in with Apple couldn't tell whether you already had an account, so it made a new one.\n\nIf you've used paisa before, sign in with Google instead — then Settings › Link your Apple ID makes Apple open that account from now on.",
+          "Starting a new account",
+          "Hide My Email gives paisa. an address that matches nothing, so there's no way to tell whether you've been here before.\n\nIf this is your first time, carry on. If you've used paisa. before, sign in with Google instead — then Settings › Link your Apple ID makes Apple open that account from then on.",
           [
             { text: "Start fresh", style: "cancel", onPress: onConnected },
             {
