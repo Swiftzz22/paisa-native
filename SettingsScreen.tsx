@@ -7,6 +7,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -18,6 +19,7 @@ import {
   deleteAccount,
   deleteAllTransactions,
   deleteImport,
+  fetchForwardingAddress,
   fetchImports,
   type Dashboard,
   type ImportSummary,
@@ -76,10 +78,38 @@ export function SettingsScreen({
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [appleLinked, setAppleLinked] = useState(false);
   const [linkingApple, setLinkingApple] = useState(false);
+  /** null until loaded, and stays null where the server has no mail domain. */
+  const [forwarding, setForwarding] = useState<string | null>(null);
 
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);
   }, []);
+
+  // Quiet on failure: a server without an inbound domain answers null, and an
+  // older server has no such route at all. Neither is worth an error on a
+  // settings screen — the row simply does not appear.
+  useEffect(() => {
+    fetchForwardingAddress(token)
+      .then((r) => setForwarding(r.address))
+      .catch(() => {});
+  }, [token]);
+
+  /**
+   * Hand the address to the share sheet, which is where Copy lives.
+   *
+   * Deliberately not a clipboard library: that would be a native module, and a
+   * native module means a new TestFlight build rather than an update that
+   * reaches phones today.
+   */
+  async function shareForwarding() {
+    if (!forwarding) return;
+    tapLight();
+    try {
+      await Share.share({ message: forwarding });
+    } catch {
+      // Dismissed, or unavailable. The address is on screen either way.
+    }
+  }
 
   // Reflect what the server says, so the row does not offer a link to someone
   // who already has one just because this screen was reopened.
@@ -405,6 +435,32 @@ export function SettingsScreen({
             <Ionicons name="chevron-forward" size={16} color={C.subtle} />
           )}
         </Pressable>
+
+        {/* The way in that doesn't involve giving paisa. access to a mailbox.
+            Hidden entirely until the server has an inbound domain, so it never
+            offers an address that nothing would deliver to. */}
+        {forwarding ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.row,
+              styles.rowBorderTop,
+              pressed && { opacity: 0.6 },
+            ]}
+            onPress={shareForwarding}
+          >
+            <Ionicons name="mail-outline" size={20} color={C.muted} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowLabel}>Forward bank alerts</Text>
+              <Text style={styles.forwardingAddress} numberOfLines={1}>
+                {forwarding}
+              </Text>
+              <Text style={styles.hint}>
+                Tap to copy. Set the filter up on the web.
+              </Text>
+            </View>
+            <Ionicons name="share-outline" size={16} color={C.subtle} />
+          </Pressable>
+        ) : null}
       </View>
 
       <Text style={styles.sectionLabel}>Manage on the web</Text>
@@ -620,6 +676,13 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
   },
   rowBorder: { borderBottomWidth: 0.5, borderBottomColor: C.border },
+  rowBorderTop: { borderTopWidth: 0.5, borderTopColor: C.border },
+  forwardingAddress: {
+    color: C.text,
+    fontSize: 13,
+    marginTop: 4,
+    fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+  },
   rowLabel: { flex: 1, color: C.text, fontSize: 15 },
   signOut: {
     flexDirection: "row",

@@ -331,6 +331,24 @@ export function deleteAccount(
   });
 }
 
+/**
+ * This account's private forwarding address, or null when the server has no
+ * inbound mail domain set up — in which case the app says nothing about it
+ * rather than offering something that cannot work yet.
+ */
+export function fetchForwardingAddress(
+  token: string
+): Promise<{ address: string | null }> {
+  return authed(token, "/api/mobile/forwarding");
+}
+
+/** Replace it. The old address stops accepting mail immediately. */
+export function rotateForwardingAddress(
+  token: string
+): Promise<{ address: string | null }> {
+  return authed(token, "/api/mobile/forwarding", { method: "POST" });
+}
+
 export type ImportResult = {
   ok: true;
   added: number;
