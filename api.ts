@@ -337,6 +337,8 @@ export type ImportResult = {
   duplicates: number;
   failed: number;
   rows: number;
+  /** Anything the reader couldn't manage — a page it failed to read, say. */
+  warnings?: string[];
 };
 
 /**

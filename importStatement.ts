@@ -61,9 +61,15 @@ export async function pickAndImportStatement(
     notifySuccess();
     const dupes =
       result.duplicates > 0 ? ` ${result.duplicates} were already here.` : "";
+    // A scanned statement is read page by page; one page can be missed while
+    // the rest imports fine. Staying quiet about that would let someone trust
+    // a total that is short by a page.
+    const missed = result.warnings?.length
+      ? `\n\n${result.warnings.join("\n\n")}`
+      : "";
     Alert.alert(
       "Imported",
-      `Added ${result.added} transaction${result.added === 1 ? "" : "s"}.${dupes}`
+      `Added ${result.added} transaction${result.added === 1 ? "" : "s"}.${dupes}${missed}`
     );
     return true;
   } catch (e) {
