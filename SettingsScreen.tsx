@@ -7,7 +7,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -30,6 +29,7 @@ import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
 import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
 import { PlusSheet } from "./PlusSheet";
+import { ForwardingSheet } from "./ForwardingSheet";
 import { isPlusConfigured } from "./plus";
 
 /**
@@ -80,6 +80,7 @@ export function SettingsScreen({
   const [linkingApple, setLinkingApple] = useState(false);
   /** null until loaded, and stays null where the server has no mail domain. */
   const [forwarding, setForwarding] = useState<string | null>(null);
+  const [forwardingOpen, setForwardingOpen] = useState(false);
 
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);
@@ -93,23 +94,6 @@ export function SettingsScreen({
       .then((r) => setForwarding(r.address))
       .catch(() => {});
   }, [token]);
-
-  /**
-   * Hand the address to the share sheet, which is where Copy lives.
-   *
-   * Deliberately not a clipboard library: that would be a native module, and a
-   * native module means a new TestFlight build rather than an update that
-   * reaches phones today.
-   */
-  async function shareForwarding() {
-    if (!forwarding) return;
-    tapLight();
-    try {
-      await Share.share({ message: forwarding });
-    } catch {
-      // Dismissed, or unavailable. The address is on screen either way.
-    }
-  }
 
   // Reflect what the server says, so the row does not offer a link to someone
   // who already has one just because this screen was reopened.
@@ -446,7 +430,10 @@ export function SettingsScreen({
               styles.rowBorderTop,
               pressed && { opacity: 0.6 },
             ]}
-            onPress={shareForwarding}
+            onPress={() => {
+              tapLight();
+              setForwardingOpen(true);
+            }}
           >
             <Ionicons name="mail-outline" size={20} color={C.muted} />
             <View style={{ flex: 1 }}>
@@ -455,10 +442,10 @@ export function SettingsScreen({
                 {forwarding}
               </Text>
               <Text style={styles.hint}>
-                Tap to copy. Set the filter up on the web.
+                Tap to set up forwarding from your bank.
               </Text>
             </View>
-            <Ionicons name="share-outline" size={16} color={C.subtle} />
+            <Ionicons name="chevron-forward" size={16} color={C.subtle} />
           </Pressable>
         ) : null}
       </View>
@@ -601,6 +588,12 @@ export function SettingsScreen({
       </View>
 
       <Text style={styles.footer}>paisa · connected to {API_BASE.replace("https://", "")}</Text>
+      <ForwardingSheet
+        visible={forwardingOpen}
+        onClose={() => setForwardingOpen(false)}
+        token={token}
+      />
+
       <PlusSheet
         visible={plusOpen}
         onClose={() => setPlusOpen(false)}
