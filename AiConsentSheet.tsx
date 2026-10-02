@@ -46,6 +46,8 @@ const FLOWS: { icon: string; title: string; detail: string }[] = [
 export function AiConsentSheet() {
   const [visible, setVisible] = useState(false);
   const resolver = useRef<((allowed: boolean) => void) | null>(null);
+  const pending = useRef<boolean | null>(null);
+  const fallback = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     onRequestAiConsent(
@@ -58,11 +60,31 @@ export function AiConsentSheet() {
     return () => onRequestAiConsent(null);
   }, []);
 
-  function answer(allowed: boolean) {
-    tapLight();
-    setVisible(false);
+  /**
+   * Hand the answer back only once the sheet has finished closing.
+   *
+   * "Allow" is followed at once by the file picker or Google's sign-in sheet.
+   * iOS will not present a new screen while this one is still animating away
+   * — it fails silently — so resolving on tap left "Upload a statement" doing
+   * nothing after Allow. onDismiss fires when the dismissal has completed; the
+   * timer covers the case where it never does.
+   */
+  function settle() {
+    if (fallback.current) clearTimeout(fallback.current);
+    fallback.current = null;
+    const allowed = pending.current;
+    pending.current = null;
+    if (allowed === null) return;
     resolver.current?.(allowed);
     resolver.current = null;
+  }
+
+  function answer(allowed: boolean) {
+    if (pending.current !== null) return;
+    tapLight();
+    pending.current = allowed;
+    setVisible(false);
+    fallback.current = setTimeout(settle, 700);
   }
 
   return (
@@ -71,6 +93,7 @@ export function AiConsentSheet() {
       animationType="slide"
       transparent
       onRequestClose={() => answer(false)}
+      onDismiss={settle}
     >
       <View style={styles.backdrop}>
         <View style={styles.sheet}>
