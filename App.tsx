@@ -439,6 +439,7 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
       <FlowDetailScreen
         flow={flow}
         items={txns}
+        loading={txnsLoading}
         onClose={() => setFlow(null)}
         onEdit={(t) => {
           setFlow(null);

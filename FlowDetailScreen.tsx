@@ -41,11 +41,21 @@ export type Flow = {
 export function FlowDetailScreen({
   flow,
   items,
+  loading = false,
   onClose,
   onEdit,
 }: {
   flow: Flow | null;
   items: Txn[];
+  /**
+   * The history is still arriving.
+   *
+   * The figures on the home screen come from the server the moment a sync or
+   * import finishes, while this list is a second request that lands later.
+   * Opening the sheet in that gap used to report "Nothing spent in this
+   * period" — stating as fact something it did not yet know.
+   */
+  loading?: boolean;
   onClose: () => void;
   onEdit?: (t: Txn) => void;
 }) {
@@ -142,7 +152,11 @@ export function FlowDetailScreen({
           stickySectionHeadersEnabled
           ListEmptyComponent={
             <Text style={styles.empty}>
-              Nothing {credit ? "received" : "spent"} in this period.
+              {loading
+                ? "Still loading your transactions…"
+                : shortfall > 0
+                  ? `These haven't finished loading yet — ${inr(shortfall)} of this period isn't shown. Pull down on the home screen to refresh.`
+                  : `Nothing ${credit ? "received" : "spent"} in this period.`}
             </Text>
           }
           renderSectionHeader={({ section }) => (

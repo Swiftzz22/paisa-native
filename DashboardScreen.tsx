@@ -657,6 +657,9 @@ export function DashboardScreen({
                         label: insights.label,
                         from: insights.from,
                         to: insights.to,
+                        // Without this the sheet cannot tell "nothing was
+                        // spent" from "the history has not arrived yet".
+                        expectedTotal: insights.spent,
                       });
                     }}
                     style={({ pressed }) => [
@@ -681,6 +684,7 @@ export function DashboardScreen({
                         label: insights.label,
                         from: insights.from,
                         to: insights.to,
+                        expectedTotal: insights.received,
                       });
                     }}
                     style={({ pressed }) => [
