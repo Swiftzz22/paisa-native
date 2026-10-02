@@ -2,6 +2,7 @@ import * as DocumentPicker from "expo-document-picker";
 import { Alert } from "react-native";
 import { importStatement, AuthError, PaywallError } from "./api";
 import { notifyError, notifySuccess } from "./haptics";
+import { requestAiConsent } from "./aiConsent";
 
 /**
  * Pick a statement file and import it.
@@ -16,6 +17,10 @@ export async function pickAndImportStatement(
   token: string,
   onNeedAuth: () => void
 ): Promise<boolean> {
+  // The file is read by Google and NVIDIA models, so the person is asked
+  // before choosing one rather than after it has already been sent.
+  if (!(await requestAiConsent())) return false;
+
   const picked = await DocumentPicker.getDocumentAsync({
     type: [
       "text/csv",

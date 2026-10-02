@@ -14,6 +14,7 @@ import {
 import { C, R } from "./theme";
 import { AuthError, ask } from "./api";
 import { tapLight } from "./haptics";
+import { requestAiConsent } from "./aiConsent";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -38,6 +39,9 @@ export function AskScreen({
   async function send(text?: string) {
     const message = (text ?? input).trim();
     if (!message || busy) return;
+    // Questions go to NVIDIA along with the transactions needed to answer
+    // them, so nothing is sent until that has been agreed.
+    if (!(await requestAiConsent())) return;
     tapLight();
     setInput("");
     const history = messages.slice();

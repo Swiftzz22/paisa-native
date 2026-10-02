@@ -18,7 +18,7 @@ import {
   deleteAccount,
   deleteAllTransactions,
   deleteImport,
-  fetchForwardingAddress,
+  disconnectEmail,
   fetchImports,
   type Dashboard,
   type ImportSummary,
@@ -29,7 +29,7 @@ import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
 import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
 import { PlusSheet } from "./PlusSheet";
-import { ForwardingSheet } from "./ForwardingSheet";
+import { hasAiConsent, requestAiConsent, setAiConsent } from "./aiConsent";
 import { isPlusConfigured } from "./plus";
 
 /**
@@ -47,13 +47,6 @@ function accountLabel(email: string | undefined): string {
   }
   return email;
 }
-
-const WEB_LINKS: { icon: string; label: string; path: string }[] = [
-  { icon: "grid-outline", label: "Categories", path: "/settings/categories" },
-  { icon: "wallet-outline", label: "Budgets", path: "/settings/budgets" },
-  { icon: "mail-outline", label: "Email connection", path: "/settings/email" },
-  { icon: "finger-print-outline", label: "Passkeys", path: "/settings/passkeys" },
-];
 
 export function SettingsScreen({
   user,
@@ -78,22 +71,58 @@ export function SettingsScreen({
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [appleLinked, setAppleLinked] = useState(false);
   const [linkingApple, setLinkingApple] = useState(false);
-  /** null until loaded, and stays null where the server has no mail domain. */
-  const [forwarding, setForwarding] = useState<string | null>(null);
-  const [forwardingOpen, setForwardingOpen] = useState(false);
+  /** Whether data may be sent to the AI services; read from the device. */
+  const [aiOn, setAiOn] = useState(false);
 
   useEffect(() => {
     isAppleSignInAvailable().then(setAppleAvailable);
   }, []);
 
-  // Quiet on failure: a server without an inbound domain answers null, and an
-  // older server has no such route at all. Neither is worth an error on a
-  // settings screen — the row simply does not appear.
+  // Re-read whenever the dashboard reloads the user, which is what happens
+  // after an import — the sheet may have been answered on another screen.
   useEffect(() => {
-    fetchForwardingAddress(token)
-      .then((r) => setForwarding(r.address))
-      .catch(() => {});
-  }, [token]);
+    hasAiConsent().then(setAiOn);
+  }, [user]);
+
+  /**
+   * Withdrawing has to be real. Statements and Ask go through the phone and
+   * simply ask again, but a connected mailbox is read by the server — so
+   * turning this off disconnects it, or new alerts would still reach the model.
+   */
+  async function toggleAi() {
+    tapLight();
+    if (!(await hasAiConsent())) {
+      setAiOn(await requestAiConsent());
+      return;
+    }
+    Alert.alert(
+      "Turn off AI processing?",
+      "paisa. will ask again before uploading a statement or answering a question. If a mailbox is connected, it will be disconnected so new bank alerts stop being read. Transactions already in paisa. stay.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Turn off",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await disconnectEmail(token);
+            } catch {
+              notifyError();
+              Alert.alert(
+                "Couldn't turn it off",
+                "Your mailbox couldn't be disconnected just now, so nothing was changed. Please try again."
+              );
+              return;
+            }
+            await setAiConsent(false);
+            setAiOn(false);
+            notifySuccess();
+            onImported?.();
+          },
+        },
+      ]
+    );
+  }
 
   // Reflect what the server says, so the row does not offer a link to someone
   // who already has one just because this screen was reopened.
@@ -420,49 +449,27 @@ export function SettingsScreen({
           )}
         </Pressable>
 
-        {/* The way in that doesn't involve giving paisa. access to a mailbox.
-            Hidden entirely until the server has an inbound domain, so it never
-            offers an address that nothing would deliver to. */}
-        {forwarding ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.row,
-              styles.rowBorderTop,
-              pressed && { opacity: 0.6 },
-            ]}
-            onPress={() => {
-              tapLight();
-              setForwardingOpen(true);
-            }}
-          >
-            <Ionicons name="mail-outline" size={20} color={C.muted} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowLabel}>Forward bank alerts</Text>
-              <Text style={styles.forwardingAddress} numberOfLines={1}>
-                {forwarding}
-              </Text>
-              <Text style={styles.hint}>
-                Tap to set up forwarding from your bank.
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={C.subtle} />
-          </Pressable>
-        ) : null}
       </View>
 
-      <Text style={styles.sectionLabel}>Manage on the web</Text>
+      <Text style={styles.sectionLabel}>Privacy</Text>
       <View style={styles.card}>
-        {WEB_LINKS.map((l, i) => (
-          <Pressable
-            key={l.path}
-            style={[styles.row, i < WEB_LINKS.length - 1 && styles.rowBorder]}
-            onPress={() => Linking.openURL(`${API_BASE}${l.path}`)}
-          >
-            <Ionicons name={l.icon as never} size={20} color={C.muted} />
-            <Text style={styles.rowLabel}>{l.label}</Text>
-            <Ionicons name="open-outline" size={16} color={C.subtle} />
-          </Pressable>
-        ))}
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
+          onPress={toggleAi}
+        >
+          <Ionicons name="sparkles-outline" size={20} color={C.muted} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>AI processing</Text>
+            <Text style={styles.hint}>
+              {aiOn
+                ? "On. Statements, bank alerts and Ask are read by Google (Gemini) and NVIDIA."
+                : "Off. Tap to see what would be shared, and with whom."}
+            </Text>
+          </View>
+          <Text style={[styles.hint, { color: aiOn ? C.green : C.subtle }]}>
+            {aiOn ? "On" : "Off"}
+          </Text>
+        </Pressable>
       </View>
 
       {/* The one place someone can find Plus without being refused something
@@ -588,12 +595,6 @@ export function SettingsScreen({
       </View>
 
       <Text style={styles.footer}>paisa · connected to {API_BASE.replace("https://", "")}</Text>
-      <ForwardingSheet
-        visible={forwardingOpen}
-        onClose={() => setForwardingOpen(false)}
-        token={token}
-      />
-
       <PlusSheet
         visible={plusOpen}
         onClose={() => setPlusOpen(false)}

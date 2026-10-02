@@ -206,6 +206,14 @@ export function deleteTransaction(token: string, id: string): Promise<{ ok: true
   return authed(token, `/api/mobile/transactions/${id}`, { method: "DELETE" });
 }
 
+/**
+ * Disconnect every mailbox. Used when AI permission is withdrawn: mail is read
+ * on the server, so stopping on the phone alone would not stop it.
+ */
+export function disconnectEmail(token: string): Promise<{ ok: true }> {
+  return authed(token, "/api/mobile/email", { method: "DELETE" });
+}
+
 export function ask(
   token: string,
   message: string,

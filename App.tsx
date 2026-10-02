@@ -38,6 +38,8 @@ import { FlowDetailScreen, type Flow } from "./FlowDetailScreen";
 import { TabBar, type TabKey } from "./TabBar";
 import { PlusSheet } from "./PlusSheet";
 import { onShowPaywall } from "./paywallBus";
+import { AiConsentSheet } from "./AiConsentSheet";
+import { clearAiConsent, hasAiConsent } from "./aiConsent";
 import { initPlus, resetPlus } from "./plus";
 
 /** How long the app can be backgrounded before it re-locks. */
@@ -293,12 +295,18 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
     // this phone is not offered — or granted — someone else's subscription.
     await resetPlus();
     await clearToken();
+    // A second person signing in on this phone is asked for themselves.
+    await clearAiConsent();
     onSignOut();
   }, [onSignOut]);
 
   // Pull the latest bank emails and, if anything new landed, refresh the
   // on-screen data by bumping `version`.
   const sync = useCallback(async () => {
+    // Syncing reads new bank mail with NVIDIA. Without permission there is
+    // nothing it may do, so it does not run — rather than send first and ask
+    // after, which is exactly what Guideline 5.1.2(i) forbids.
+    if (!(await hasAiConsent())) return;
     setSyncing(true);
     try {
       const res = await syncNow(token);
@@ -446,6 +454,8 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
           openEdit(t);
         }}
       />
+
+      <AiConsentSheet />
 
       <PlusSheet
         visible={paywall !== null}

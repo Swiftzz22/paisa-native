@@ -38,6 +38,7 @@ import { windowFor } from "./period";
 import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
 import type { Flow } from "./FlowDetailScreen";
+import { requestAiConsent } from "./aiConsent";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -459,6 +460,9 @@ export function DashboardScreen({
           connecting={connecting}
           onConnect={async () => {
             tapLight();
+            // Every alert in the mailbox is read by NVIDIA, so this is asked
+            // before Google's consent screen, not discovered after it.
+            if (!(await requestAiConsent())) return;
             setConnecting(true);
             const res = await connectGmail(token);
             setConnecting(false);
