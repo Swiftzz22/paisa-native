@@ -290,12 +290,41 @@ export function DashboardScreen({
     (category: string) => {
       if (!insights) return;
       tapLight();
+      const row = insights.categories.find((c) => c.name === category);
       onOpenFlow?.({
         type: "debit",
         label: insights.label,
         from: insights.from,
         to: insights.to,
         category,
+        // The card's figure is the server's, counted over everything; the sheet
+        // filters the history on the device, which may still be loading or may
+        // not reach back this far. Handing over the expected total is what lets
+        // it say a row is missing instead of quietly showing nothing.
+        expectedTotal: row?.amount,
+      });
+    },
+    [insights, onOpenFlow]
+  );
+
+  /**
+   * Same sheet, narrowed to one payment method.
+   *
+   * These chips showed a total and did nothing when tapped, which reads as a
+   * broken control rather than a deliberately flat one — every other figure on
+   * this screen opens its own breakdown.
+   */
+  const openPaymentMode = useCallback(
+    (mode: string, label: string, amount: number) => {
+      if (!insights) return;
+      tapLight();
+      onOpenFlow?.({
+        type: "debit",
+        label: `${label} · ${insights.label}`,
+        from: insights.from,
+        to: insights.to,
+        paymentMode: mode,
+        expectedTotal: amount,
       });
     },
     [insights, onOpenFlow]
@@ -742,11 +771,19 @@ export function DashboardScreen({
                       <Text style={styles.modesTitle}>By payment mode</Text>
                       <View style={styles.modesRow}>
                         {insights.paymentModes.map((p) => (
-                          <View key={p.mode} style={styles.modeChip}>
+                          <Pressable
+                            key={p.mode}
+                            onPress={() => openPaymentMode(p.mode, p.label, p.amount)}
+                            hitSlop={4}
+                            style={({ pressed }) => [
+                              styles.modeChip,
+                              pressed && { opacity: 0.55 },
+                            ]}
+                          >
                             <View style={[styles.legendDot, { backgroundColor: p.color }]} />
                             <Text style={styles.modeLabel}>{p.label}</Text>
                             <Text style={styles.modeAmount}>{inr(p.amount)}</Text>
-                          </View>
+                          </Pressable>
                         ))}
                       </View>
                     </View>

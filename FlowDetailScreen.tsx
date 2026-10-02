@@ -21,6 +21,8 @@ export type Flow = {
   to: string;
   /** Narrow to one category — set when opened from a pie slice or legend row. */
   category?: string;
+  /** Narrow to one payment method — set when opened from a payment-mode chip. */
+  paymentMode?: string;
   /**
    * What the caller's own figure says this period totals. The trend chart is
    * built server-side from everything, while this sheet filters the history
@@ -55,6 +57,7 @@ export function FlowDetailScreen({
     const matching = items.filter((t) => {
       if (t.type !== flow.type) return false;
       if (flow.category && t.category !== flow.category) return false;
+      if (flow.paymentMode && t.paymentMode !== flow.paymentMode) return false;
       const at = new Date(t.occurredAt).getTime();
       return at >= from && at <= to;
     });
