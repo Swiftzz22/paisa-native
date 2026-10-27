@@ -36,6 +36,12 @@ const FLOWS: { icon: string; title: string; detail: string }[] = [
       "If you connect a mailbox, the text of each bank or UPI alert goes to NVIDIA, to read the amount, merchant and category.",
   },
   {
+    icon: "scan-outline",
+    title: "Receipts, only when you ask for help",
+    detail:
+      "Receipts are read on your iPhone. If one can't be read and you tap to use AI, the text from it (never the photo) goes to Google (Gemini).",
+  },
+  {
     icon: "sparkles-outline",
     title: "Questions in Ask",
     detail:
@@ -101,8 +107,9 @@ export function AiConsentSheet() {
           <ScrollView bounces={false}>
             <Text style={styles.title}>Before paisa. uses AI</Text>
             <Text style={styles.body}>
-              Reading statements and bank alerts, and answering your questions,
-              needs AI services run by other companies. This is what would be
+              Reading statements and bank alerts, answering your questions and
+              helping with hard-to-read receipts needs AI services run by other
+              companies. This is what would be
               sent, and to whom:
             </Text>
 

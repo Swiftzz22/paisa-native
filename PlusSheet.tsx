@@ -28,15 +28,19 @@ import {
  * the point of the `paywall` flag on those responses: the refusal and the
  * offer arrive together, at the moment someone actually wanted the thing.
  *
- * What is listed is what costs money to run. Saying so plainly is not
- * self-deprecation, it is the honest reason the line falls where it does, and
- * it reads far better than a feature grid implying the free app is crippled.
+ * The free app stays whole: tracking, charts, budgets. Plus is the tools that
+ * do work on your behalf — reading mail and statements, answering questions,
+ * converting currencies. Framed that way it reads as an upgrade rather than a
+ * feature grid implying the free app is crippled.
  */
 
 const INCLUDED: { icon: string; text: string }[] = [
   { icon: "mail-outline", text: "Automatic sync from your bank emails" },
   { icon: "document-text-outline", text: "Unlimited statement imports" },
   { icon: "sparkles-outline", text: "Unlimited questions in Ask" },
+  { icon: "scan-outline", text: "Scan receipts — read on your iPhone, never uploaded" },
+  { icon: "globe-outline", text: "Spend in any currency, at that day's rate" },
+  { icon: "people-outline", text: "Split bills and settle up over UPI" },
 ];
 
 export function PlusSheet({
@@ -115,8 +119,8 @@ export function PlusSheet({
               <Text style={styles.reason}>{reason}</Text>
             ) : (
               <Text style={styles.body}>
-                Everything you can see stays free. Plus covers the three things
-                that cost money to run — the ones where a computer reads for you.
+                Everything you can see stays free. Plus adds the power tools —
+                the ones that read, convert and work things out for you.
               </Text>
             )}
 

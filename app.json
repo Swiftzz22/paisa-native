@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "paisa",
+    "name": "paisa plus",
     "slug": "paisa-native",
     "scheme": "com.saniakothari.paisa",
     "version": "1.0.0",
@@ -39,6 +39,14 @@
         "expo-local-authentication",
         {
           "faceIDPermission": "Use Face ID to unlock paisa and keep your finances private."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "paisa uses the camera to scan receipts. The photo is read on your iPhone and is not uploaded.",
+          "photosPermission": "paisa reads receipts you choose from your photos. They are read on your iPhone and are not uploaded.",
+          "microphonePermission": false
         }
       ],
       "@react-native-community/datetimepicker",

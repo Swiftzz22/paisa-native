@@ -473,6 +473,7 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
         visible={modalOpen}
         token={token}
         editing={editing}
+        plusAccess={user?.plusAccess ?? user?.plus === true}
         onClose={() => setModalOpen(false)}
         onSaved={() => {
           setModalOpen(false);
