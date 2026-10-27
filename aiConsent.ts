@@ -16,7 +16,9 @@ import * as SecureStore from "expo-secure-store";
  * on the same phone is asked for themselves rather than inheriting a yes.
  */
 
-const KEY = "paisa_ai_consent_v1";
+// v2: bank alerts may now go to Google (Gemini) when NVIDIA is down. A yes
+// given to the v1 wording didn't cover that, so everyone is asked once more.
+const KEY = "paisa_ai_consent_v2";
 
 let cached: boolean | null = null;
 
