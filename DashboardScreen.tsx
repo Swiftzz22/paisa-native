@@ -43,6 +43,8 @@ import type { Flow } from "./FlowDetailScreen";
 import { requestAiConsent } from "./aiConsent";
 import { useHiddenTxnIds } from "./undoDelete";
 import { SafeToSpendHero } from "./SafeToSpend";
+import { Tip } from "./Tip";
+import { useDashboardTip } from "./tips";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -178,10 +180,13 @@ export function DashboardScreen({
   onUser,
   onOpenFlow,
   onAdd,
+  onOpenAsk,
   items,
 }: {
   /** Opens the add-transaction sheet from the empty state. */
   onAdd?: () => void;
+  /** Switches to the Ask tab, from its tip. */
+  onOpenAsk?: () => void;
   token: string;
   version: number;
   /** History held by the shell — lets a custom range be summarised locally. */
@@ -230,6 +235,7 @@ export function DashboardScreen({
   const [rangeSheet, setRangeSheet] = useState(false);
   // Rows waiting on the undo toast leave Recent at once, like everywhere else.
   const hidden = useHiddenTxnIds();
+  const { tip, dismiss: dismissTip } = useDashboardTip();
 
   // The donut was a fixed 160pt, which left ~123pt for the legend on a 375pt
   // phone and less than half that at 360 — enough to truncate every category
@@ -548,6 +554,26 @@ export function DashboardScreen({
             )}
           </View>
 
+          {tip === "ask" ? (
+            <Tip
+              icon="chatbubble-ellipses-outline"
+              text="Ask about your spending in plain English, like “How much did I spend on food this month?”"
+              action={
+                onOpenAsk
+                  ? {
+                      label: "Try Ask",
+                      onPress: () => {
+                        dismissTip("ask");
+                        onOpenAsk();
+                      },
+                    }
+                  : undefined
+              }
+              onDismiss={() => dismissTip("ask")}
+              style={{ marginTop: 12 }}
+            />
+          ) : null}
+
           <View style={{ marginTop: 24 }}>
             <View style={styles.sectionRow}>
               <Text style={styles.sectionTitle}>Insights</Text>
@@ -574,6 +600,24 @@ export function DashboardScreen({
                 setAnchor(new Date());
               }}
             />
+
+            {tip === "monthBars" ? (
+              <Tip
+                icon="bar-chart-outline"
+                text="Year shows your last 12 months as bars. Tap a bar to open that month."
+                action={{
+                  label: "Show me",
+                  onPress: () => {
+                    dismissTip("monthBars");
+                    setCustom(null);
+                    setPeriod("year");
+                    setAnchor(new Date());
+                  },
+                }}
+                onDismiss={() => dismissTip("monthBars")}
+                style={{ marginTop: 10 }}
+              />
+            ) : null}
 
             <Pressable
               onPress={() => {

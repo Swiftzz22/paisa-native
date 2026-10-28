@@ -454,6 +454,7 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onUser={setUser}
               onOpenFlow={setFlow}
               onAdd={openAdd}
+              onOpenAsk={() => setTab("ask")}
               items={visibleTxns}
             />
           </TabPane>
