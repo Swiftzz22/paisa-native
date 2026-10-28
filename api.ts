@@ -26,6 +26,11 @@ export type Dashboard = {
     daysElapsed: number;
     daysInMonth: number;
     pct: number;
+    /**
+     * Spent against the capped categories. Newer servers send it; without it
+     * `left` stands in until it bottoms out at zero.
+     */
+    spent?: number;
   } | null;
   categories: { name: string; amount: number; pct: number; color: string }[];
   recent: {

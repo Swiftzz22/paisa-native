@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
   Animated,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 import { C, R, R_INNER, SPACE } from "./theme";
 import { inr, relativeDate, categoryIcon, categoryColor } from "./format";
 import {
+  API_BASE,
   AuthError,
   fetchDashboard,
   fetchInsights,
@@ -40,6 +42,7 @@ import { tapLight } from "./haptics";
 import type { Flow } from "./FlowDetailScreen";
 import { requestAiConsent } from "./aiConsent";
 import { useHiddenTxnIds } from "./undoDelete";
+import { SafeToSpendHero } from "./SafeToSpend";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -428,6 +431,15 @@ export function DashboardScreen({
   const recent = data ? data.recent.filter((t) => !hidden.has(t.id)) : [];
   const down = data ? data.deltaPercent <= 0 : true;
   const deltaPct = data ? Math.abs(Math.round(data.deltaPercent * 100)) : 0;
+  const deltaPill =
+    deltaPct > 0 ? (
+      <View style={[styles.pill, !down && styles.pillUp]}>
+        <Ionicons name={down ? "arrow-down" : "arrow-up"} size={12} color={down ? C.green : C.red} />
+        <Text style={[styles.pillText, !down && { color: C.red }]}>
+          {deltaPct}% vs last month
+        </Text>
+      </View>
+    ) : null;
 
   return (
     <ScrollView
@@ -504,46 +516,36 @@ export function DashboardScreen({
       {data && data.recent.length > 0 && !arrived ? (
         <>
           <View style={styles.hero}>
-            <Text style={styles.heroLabel}>Spent in {data.monthLabel}</Text>
-            <View style={styles.heroRow}>
-              <Text style={styles.heroAmount}>{inr(data.spent)}</Text>
-              {deltaPct > 0 ? (
-                <View style={[styles.pill, !down && styles.pillUp]}>
-                  <Ionicons
-                    name={down ? "arrow-down" : "arrow-up"}
-                    size={12}
-                    color={down ? C.green : C.red}
-                  />
-                  <Text style={[styles.pillText, !down && { color: C.red }]}>
-                    {deltaPct}% vs last month
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
             {data.budget ? (
-              <View style={{ marginTop: 16 }}>
-                <View style={styles.budgetRow}>
-                  <Text style={styles.budgetText}>
-                    {inr(data.budget.left)} left of {inr(data.budget.cap)}
-                  </Text>
-                  <Text style={styles.budgetText}>
-                    day {data.budget.daysElapsed} / {data.budget.daysInMonth}
-                  </Text>
+              <SafeToSpendHero
+                budget={data.budget}
+                spent={data.spent}
+                monthLabel={data.monthLabel}
+              >
+                {deltaPill}
+              </SafeToSpendHero>
+            ) : (
+              <>
+                <Text style={styles.heroLabel}>Spent in {data.monthLabel}</Text>
+                <View style={styles.heroRow}>
+                  <Text style={styles.heroAmount}>{inr(data.spent)}</Text>
+                  {deltaPill}
                 </View>
-                <View style={styles.track}>
-                  <View
-                    style={[
-                      styles.trackFill,
-                      {
-                        width: `${data.budget.pct}%`,
-                        backgroundColor: data.budget.pct >= 80 ? C.red : C.green,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-            ) : null}
+                {/* Quiet on purpose: a budget is what turns this number
+                    into "how much can I spend today", but nobody needs one. */}
+                <Pressable
+                  onPress={() => {
+                    tapLight();
+                    Linking.openURL(`${API_BASE}/settings/budgets`);
+                  }}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.setBudget, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.setBudgetText}>Set a budget</Text>
+                  <Ionicons name="arrow-forward" size={12} color={C.muted} />
+                </Pressable>
+              </>
+            )}
           </View>
 
           <View style={{ marginTop: 24 }}>
@@ -961,6 +963,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   heroLabel: { fontSize: 13, color: C.muted },
+  setBudget: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 12 },
+  setBudgetText: { fontSize: 13, color: C.muted, textDecorationLine: "underline" },
   heroRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -980,10 +984,6 @@ const styles = StyleSheet.create({
   },
   pillUp: { backgroundColor: C.redBg },
   pillText: { fontSize: 12, color: C.green, fontWeight: "500" },
-  budgetRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  budgetText: { fontSize: 12, color: C.muted },
-  track: { height: 6, backgroundColor: "#000", borderRadius: R.pill, overflow: "hidden" },
-  trackFill: { height: "100%", borderRadius: R.pill },
   sectionTitle: { fontSize: 15, fontWeight: "600", color: C.text },
   sectionRow: {
     flexDirection: "row",
