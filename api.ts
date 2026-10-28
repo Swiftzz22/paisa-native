@@ -82,6 +82,8 @@ export type NewTxn = {
   paymentMode: string;
   type: "debit" | "credit";
   note?: string;
+  /** ISO time; the server uses now when it is left out. */
+  occurredAt?: string;
 };
 
 export class AuthError extends Error {}

@@ -39,6 +39,7 @@ import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
 import type { Flow } from "./FlowDetailScreen";
 import { requestAiConsent } from "./aiConsent";
+import { useHiddenTxnIds } from "./undoDelete";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -224,6 +225,8 @@ export function DashboardScreen({
     return () => clearTimeout(t);
   }, [arrived]);
   const [rangeSheet, setRangeSheet] = useState(false);
+  // Rows waiting on the undo toast leave Recent at once, like everywhere else.
+  const hidden = useHiddenTxnIds();
 
   // The donut was a fixed 160pt, which left ~123pt for the legend on a 375pt
   // phone and less than half that at 360 — enough to truncate every category
@@ -422,6 +425,7 @@ export function DashboardScreen({
     );
   }
 
+  const recent = data ? data.recent.filter((t) => !hidden.has(t.id)) : [];
   const down = data ? data.deltaPercent <= 0 : true;
   const deltaPct = data ? Math.abs(Math.round(data.deltaPercent * 100)) : 0;
 
@@ -889,17 +893,17 @@ export function DashboardScreen({
           <View style={{ marginTop: 26 }}>
             <Text style={styles.sectionTitle}>Recent</Text>
             <View style={{ marginTop: 6 }}>
-              {data.recent.length === 0 ? (
+              {recent.length === 0 ? (
                 <Text style={styles.empty}>No transactions yet.</Text>
               ) : (
-                data.recent.map((t, i) => {
+                recent.map((t, i) => {
                   const credit = t.type === "credit";
                   const tint = credit ? C.green : categoryColor(t.category);
                   return (
                     <Pressable
                       key={t.id}
                       onPress={() => onEdit?.(t)}
-                      style={[styles.txn, i < data.recent.length - 1 && styles.txnBorder]}
+                      style={[styles.txn, i < recent.length - 1 && styles.txnBorder]}
                     >
                       <View style={[styles.txnIcon, { backgroundColor: tint + "26" }]}>
                         <Ionicons

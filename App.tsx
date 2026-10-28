@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { C } from "./theme";
 import {
@@ -41,6 +41,9 @@ import { onShowPaywall } from "./paywallBus";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { clearAiConsent, hasAiConsent } from "./aiConsent";
 import { initPlus, resetPlus } from "./plus";
+import { UndoToast } from "./UndoToast";
+import { scheduleDelete, useHiddenTxnIds } from "./undoDelete";
+import { notifyError } from "./haptics";
 
 /** How long the app can be backgrounded before it re-locks. */
 const LOCK_GRACE_MS = 60_000;
@@ -396,6 +399,30 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
     loadTxns();
   }, [loadTxns, version]);
 
+  // A deleted row leaves every list at once, while the toast still offers Undo.
+  const hidden = useHiddenTxnIds();
+  const visibleTxns = useMemo(
+    () => (hidden.size ? txns.filter((t) => !hidden.has(t.id)) : txns),
+    [txns, hidden]
+  );
+
+  const deleteWithUndo = useCallback(
+    (t: Txn) => {
+      setModalOpen(false);
+      scheduleDelete({
+        token,
+        txn: t,
+        onCommitted: () => setVersion((v) => v + 1),
+        onFailed: (e) => {
+          if (e instanceof AuthError) return signOut();
+          notifyError();
+          Alert.alert(`Couldn't delete ${t.merchant}`, "It's back in your list. Try again in a moment.");
+        },
+      });
+    },
+    [token, signOut]
+  );
+
   // Sync on open, but not on every open.
   //
   // A sync fetches Gmail and runs a parse batch — by far the heaviest call the
@@ -427,14 +454,14 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onUser={setUser}
               onOpenFlow={setFlow}
               onAdd={openAdd}
-              items={txns}
+              items={visibleTxns}
             />
           </TabPane>
         )}
         {visited.has("activity") && (
           <TabPane active={tab === "activity"}>
             <TransactionsScreen
-              items={txns}
+              items={visibleTxns}
               loading={txnsLoading}
               loadingMore={txnsMore}
               error={txnsError}
@@ -459,13 +486,14 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
             />
           </TabPane>
         )}
+        <UndoToast bottom={12} />
       </View>
 
       <TabBar active={tab} onTab={setTab} onAdd={openAdd} />
 
       <FlowDetailScreen
         flow={flow}
-        items={txns}
+        items={visibleTxns}
         loading={txnsLoading}
         onClose={() => setFlow(null)}
         onEdit={(t) => {
@@ -492,7 +520,9 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
         visible={modalOpen}
         token={token}
         editing={editing}
+        history={txns}
         onClose={() => setModalOpen(false)}
+        onDelete={deleteWithUndo}
         onSaved={() => {
           setModalOpen(false);
           setVersion((v) => v + 1);
