@@ -40,6 +40,7 @@ export const CURRENCIES: Currency[] = [
   { code: "OMR", symbol: "OMR", name: "Omani Rial" },
   { code: "KWD", symbol: "KWD", name: "Kuwaiti Dinar" },
   { code: "BHD", symbol: "BHD", name: "Bahraini Dinar" },
+  { code: "JOD", symbol: "JOD", name: "Jordanian Dinar" },
   { code: "TRY", symbol: "₺", name: "Turkish Lira" },
   { code: "SEK", symbol: "kr", name: "Swedish Krona" },
   { code: "NOK", symbol: "kr", name: "Norwegian Krone" },
@@ -58,10 +59,13 @@ export function currencyFor(code: string): Currency {
 /** Currencies nobody writes with decimals. Showing "¥1,200.00" looks broken. */
 const NO_DECIMALS = new Set(["JPY", "KRW", "IDR", "VND"]);
 
+/** Dinars are counted in fils, a thousandth each: "KWD 0.750", not "KWD 0.75". */
+const THREE_DECIMALS = new Set(["KWD", "BHD", "OMR", "JOD"]);
+
 /** "S$12.50", "¥1,200", "AED 45.00". All-letter symbols get a space; anything with a mark doesn't. */
 export function money(amount: number, code: string): string {
   const { symbol } = currencyFor(code);
-  const digits = NO_DECIMALS.has(code) ? 0 : 2;
+  const digits = NO_DECIMALS.has(code) ? 0 : THREE_DECIMALS.has(code) ? 3 : 2;
   const n = Math.abs(amount).toLocaleString("en-US", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,

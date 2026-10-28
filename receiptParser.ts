@@ -32,6 +32,8 @@ export type ParsedReceipt = {
 export type ParseHints = {
   /** Last foreign currency used — the best tie-breaker for "$" or "¥". */
   recentCurrency?: string | null;
+  /** The currency the person picked by hand, which beats anything printed. */
+  currency?: string | null;
   /** For rejecting future dates; injectable for tests. */
   today?: Date;
 };
@@ -47,15 +49,23 @@ export type ParseHints = {
  * and narrow spaces that typesetting uses for grouping count.
  */
 const AMOUNT_RE =
-  /-?\d{1,3}(?:[,.  ]\d{2,3})+(?:[.,]\d{1,2})?|-?\d+(?:[.,]\d{1,2})?/g;
+  /-?\d{1,3}(?:[,.  ]\d{2,3})+(?:[.,]\d{1,3})?|-?\d+(?:[.,]\d{1,3})?/g;
+
+/**
+ * Currencies that count in thousandths: a Kuwaiti dinar is 1,000 fils, so
+ * "KD 2.000" is two dinars. Reading those three digits as thousands, as
+ * parseAmount does everywhere else, makes a coffee in Kuwait cost two thousand.
+ */
+export const THREE_DECIMALS = new Set(["KWD", "BHD", "OMR", "JOD"]);
 
 /**
  * Read one money-shaped token as a number, working out which mark is the
  * decimal point. When both appear the last one is. When only one appears,
  * exactly three digits after it means thousands (1,500 · 1.500), which is
- * right for rupiah and yen and almost never wrong elsewhere.
+ * right for rupiah and yen and almost never wrong elsewhere, except in a
+ * currency with three decimal places (`decimals` 3), where it means fils.
  */
-export function parseAmount(token: string): number | null {
+export function parseAmount(token: string, decimals = 2): number | null {
   let t = token.replace(/[\s ]/g, "");
   const neg = t.startsWith("-");
   if (neg) t = t.slice(1);
@@ -69,7 +79,7 @@ export function parseAmount(token: string): number | null {
     const mark = t[at];
     const after = t.length - at - 1;
     const repeated = t.indexOf(mark) !== at;
-    if (!repeated && after !== 3) decimalAt = at;
+    if (!repeated && (after !== 3 || decimals === 3)) decimalAt = at;
   }
   const whole = (decimalAt >= 0 ? t.slice(0, decimalAt) : t).replace(/[.,]/g, "");
   const frac = decimalAt >= 0 ? t.slice(decimalAt + 1) : "";
@@ -79,7 +89,7 @@ export function parseAmount(token: string): number | null {
 }
 
 /** Every amount on a line, skipping things that only look like numbers. */
-function amountsIn(line: string): number[] {
+function amountsIn(line: string, decimals: number): number[] {
   const cleaned = line
     // Dates, times, phone numbers and long ids are not prices.
     .replace(/\b\d{1,4}[/-]\d{1,2}[/-]\d{1,4}\b/g, " ")
@@ -95,24 +105,24 @@ function amountsIn(line: string): number[] {
     // "18 %" is a rate, not money.
     const rest = cleaned.slice((m.index ?? 0) + m[0].length);
     if (/^\s*%/.test(rest)) continue;
-    const n = parseAmount(m[0]);
+    const n = parseAmount(m[0], decimals);
     if (n !== null) out.push(n);
   }
   return out;
 }
 
 /** The amount a line ends with — on a receipt, the price sits at the right. */
-function trailingAmount(line: string): number | null {
-  const all = amountsIn(line);
+function trailingAmount(line: string, decimals: number): number | null {
+  const all = amountsIn(line, decimals);
   return all.length ? all[all.length - 1] : null;
 }
 
 /** True for a line that is nothing but a price ("450.00", "₹ 1,299", "S$12.50"). */
-function isAmountOnly(line: string): boolean {
+function isAmountOnly(line: string, decimals: number): boolean {
   const stripped = line
-    .replace(/(?:rs\.?|inr|usd|sgd|aed|eur|gbp|thb|myr|idr|jpy|us\$|s\$|hk\$|a\$|rm|rp)/gi, "")
+    .replace(/(?:rs\.?|inr|usd|sgd|aed|eur|gbp|thb|myr|idr|jpy|kwd|bhd|omr|jod|us\$|s\$|hk\$|a\$|rm|rp|kd|bd|jd)/gi, "")
     .replace(/[₹$€£¥฿₩₫₱:\s-]/g, "");
-  return /^\d[\d.,]*$/.test(stripped) && amountsIn(line).length === 1;
+  return /^\d[\d.,]*$/.test(stripped) && amountsIn(line, decimals).length === 1;
 }
 
 // ─── Currency ───────────────────────────────────────────────────────────────
@@ -134,6 +144,10 @@ const CURRENCY_MARKS: [RegExp, string][] = [
   [/\baed\b|\bdhs?\b|dubai|abu dhabi|\buae\b/i, "AED"],
   [/\bsar\b|riyadh|jeddah/i, "SAR"],
   [/\bqar\b|doha/i, "QAR"],
+  [/\bkwd\b|\bk\.?d\.?\s?\d|kuwait/i, "KWD"],
+  [/\bbhd\b|\bb\.?d\.?\s?\d|bahrain|manama/i, "BHD"],
+  [/\bomr\b|\br\.o\.?\s?\d|\boman\b|muscat/i, "OMR"],
+  [/\bjod\b|\bj\.?d\.?\s?\d|jordan|amman/i, "JOD"],
   [/₩|\bkrw\b/i, "KRW"],
   [/₫|\bvnd\b|vietnam/i, "VND"],
   [/₱|\bphp\b|philippines/i, "PHP"],
@@ -285,20 +299,25 @@ const PAYMENT =
   /cash|change|tender|paid|card|visa|master|amex|upi|paytm|gpay|phonepe|balance|refund|approved|auth|ref\b|txn|terminal|rrn|\bmid\b|\btid\b/i;
 
 /** The amount for a label line: on the same line, or alone on the next one. */
-function amountFor(lines: string[], i: number): number | null {
-  const own = trailingAmount(lines[i]);
+function amountFor(lines: string[], i: number, decimals: number): number | null {
+  const own = trailingAmount(lines[i], decimals);
   if (own !== null) return own;
   const next = lines[i + 1];
-  return next !== undefined && isAmountOnly(next) ? trailingAmount(next) : null;
+  return next !== undefined && isAmountOnly(next, decimals)
+    ? trailingAmount(next, decimals)
+    : null;
 }
 
-function detectTotal(lines: string[]): { total: number | null; at: number; rank: number } {
+function detectTotal(
+  lines: string[],
+  decimals: number
+): { total: number | null; at: number; rank: number } {
   let best = { total: null as number | null, at: -1, rank: 0 };
   lines.forEach((line, i) => {
     if (NOT_TOTAL.test(line)) return;
     for (const [re, rank] of TOTAL_LABELS) {
       if (!re.test(line)) continue;
-      const amount = amountFor(lines, i);
+      const amount = amountFor(lines, i, decimals);
       // Higher rank wins; at equal rank the later line wins, since a running
       // "total" above the tax is followed by the real one below it.
       if (amount !== null && amount > 0 && (rank > best.rank || (rank === best.rank && i > best.at))) {
@@ -310,7 +329,11 @@ function detectTotal(lines: string[]): { total: number | null; at: number; rank:
   return best;
 }
 
-function detectExtras(lines: string[], end: number): { label: string; amount: number }[] {
+function detectExtras(
+  lines: string[],
+  end: number,
+  decimals: number
+): { label: string; amount: number }[] {
   const out: { label: string; amount: number }[] = [];
   for (let i = 0; i < end; i++) {
     const line = lines[i];
@@ -318,7 +341,7 @@ function detectExtras(lines: string[], end: number): { label: string; amount: nu
     if (/total/i.test(line) && !/tax|gst|vat/i.test(line)) continue;
     for (const [re, label] of EXTRA_LABELS) {
       if (!re.test(line)) continue;
-      const amount = amountFor(lines, i);
+      const amount = amountFor(lines, i, decimals);
       if (amount !== null && amount !== 0) {
         out.push({ label, amount: label === "Discount" ? -Math.abs(amount) : amount });
       }
@@ -352,7 +375,12 @@ const QTY_SUFFIX = /\s+(?:(\d{1,2})\s*(?:x|×|@)\s*[\d.,]+|(?:x|×)\s*(\d{1,2}))
  * Line items between the header and the total. Best-effort: they matter for
  * splitting a bill by item, and the person can always fix one by hand.
  */
-function detectItems(lines: string[], start: number, end: number): ReceiptItem[] {
+function detectItems(
+  lines: string[],
+  start: number,
+  end: number,
+  decimals: number
+): ReceiptItem[] {
   const items: ReceiptItem[] = [];
   const isLabelish = (s: string) =>
     PAYMENT.test(s) ||
@@ -367,14 +395,14 @@ function detectItems(lines: string[], start: number, end: number): ReceiptItem[]
     const letters = line.replace(/[^\p{L}]/gu, "");
     if (letters.length < 2) continue;
 
-    let amount = trailingAmount(line);
+    let amount = trailingAmount(line, decimals);
     let name = line;
     if (amount !== null) {
       // Strip the price (and any unit-price column) off the end of the name.
       name = line.replace(/[\s₹$€£¥฿:]*-?[\d][\d.,\s]*$/, "").replace(/[\s₹$€£¥฿]+$/, "");
-    } else if (i + 1 < end && isAmountOnly(lines[i + 1])) {
+    } else if (i + 1 < end && isAmountOnly(lines[i + 1], decimals)) {
       // Name and price came back as separate lines.
-      amount = trailingAmount(lines[i + 1]);
+      amount = trailingAmount(lines[i + 1], decimals);
       i++;
     }
     if (amount === null || amount <= 0) continue;
@@ -399,7 +427,8 @@ function detectItems(lines: string[], start: number, end: number): ReceiptItem[]
 
 // ─── Putting it together ────────────────────────────────────────────────────
 
-const round2 = (n: number) => Math.round(n * 100) / 100;
+/** To the thousandth, so a dinar receipt's fils survive being added up. */
+const roundMoney = (n: number) => Math.round(n * 1000) / 1000;
 
 export function parseReceipt(rawLines: string[], hints: ParseHints = {}): ParsedReceipt {
   const lines = rawLines
@@ -409,15 +438,19 @@ export function parseReceipt(rawLines: string[], hints: ParseHints = {}): Parsed
   const text = lines.join("\n");
   const today = hints.today ?? new Date();
 
-  const { currency, sure } = detectCurrency(text, hints.recentCurrency);
-  const found = detectTotal(lines);
+  const { currency, sure } = hints.currency
+    ? { currency: hints.currency, sure: true }
+    : detectCurrency(text, hints.recentCurrency);
+  // Settled before any amount is read, since it decides what "2.000" means.
+  const decimals = currency && THREE_DECIMALS.has(currency) ? 3 : 2;
+  const found = detectTotal(lines, decimals);
   const end = found.at >= 0 ? found.at : lines.length;
   const merchant = detectMerchant(lines);
-  const items = detectItems(lines, itemsStart(lines, end), end);
-  const extras = detectExtras(lines, end);
+  const items = detectItems(lines, itemsStart(lines, end), end, decimals);
+  const extras = detectExtras(lines, end, decimals);
   const date = detectDate(lines, currency, today);
-  const itemsSum = round2(items.reduce((s, it) => s + it.amount, 0));
-  const extrasSum = round2(extras.reduce((s, e) => s + e.amount, 0));
+  const itemsSum = roundMoney(items.reduce((s, it) => s + it.amount, 0));
+  const extrasSum = roundMoney(extras.reduce((s, e) => s + e.amount, 0));
 
   let total = found.total;
   let rank = found.rank;
@@ -426,11 +459,11 @@ export function parseReceipt(rawLines: string[], hints: ParseHints = {}): Parsed
     // failing that, the largest amount that isn't a payment line. Either way
     // the confidence score admits it was a guess.
     if (items.length > 0) {
-      total = round2(itemsSum + extrasSum);
+      total = roundMoney(itemsSum + extrasSum);
     } else {
       const amounts = lines
         .filter((l) => !PAYMENT.test(l))
-        .flatMap(amountsIn)
+        .flatMap((l) => amountsIn(l, decimals))
         .filter((n) => n > 0);
       total = amounts.length ? Math.max(...amounts) : null;
     }

@@ -50,7 +50,7 @@ import {
 } from "./currency";
 import * as ImagePicker from "expo-image-picker";
 import { extractTextFromImage, isSupported as canReadText } from "expo-text-extractor";
-import { parseReceipt, type ParsedReceipt } from "./receiptParser";
+import { parseReceipt, THREE_DECIMALS, type ParsedReceipt } from "./receiptParser";
 import { showPaywall } from "./paywallBus";
 import { requestAiConsent } from "./aiConsent";
 import { SplitSheet } from "./SplitSheet";
@@ -127,6 +127,8 @@ export function TransactionModal({
   const [people, setPeople] = useState<Person[]>([]);
   /** What the phone read off the last photo — all the AI fallback ever sees. */
   const [ocrLines, setOcrLines] = useState<string[] | null>(null);
+  /** The AI reads amounts itself, so its answer is never re-read by the rules. */
+  const [receiptFromAi, setReceiptFromAi] = useState(false);
   const [offerAi, setOfferAi] = useState(false);
   const [aiReading, setAiReading] = useState(false);
 
@@ -156,6 +158,7 @@ export function TransactionModal({
     setReceiptDate(null);
     setReceipt(null);
     setOcrLines(null);
+    setReceiptFromAi(false);
     setOfferAi(false);
     if (editing) {
       setType(editing.type);
@@ -364,6 +367,7 @@ export function TransactionModal({
 
   function applyReceipt(r: ParsedReceipt, fromAi = false) {
     setReceipt(r);
+    setReceiptFromAi(fromAi);
     // Offer help only where the rules struggled, and never twice.
     setOfferAi(!fromAi && (r.total === null || r.confidence < 0.5));
     if (r.total !== null) setAmount(String(r.total));
@@ -393,6 +397,20 @@ export function TransactionModal({
     } else {
       setScanNote("Filled in from the receipt.");
     }
+  }
+
+  /**
+   * Picking a currency after a scan. A receipt that never printed one was read
+   * as two-decimal money, so "0.750" came out as 750; once someone says it was
+   * dinars, the same text is read again in fils. Only while the amount is
+   * still the scanned one: a total typed in by hand is theirs to keep.
+   */
+  function pickCurrency(code: string) {
+    setCurrency(code);
+    if (!receipt || !ocrLines || receiptFromAi) return;
+    if (receipt.total === null || amount !== String(receipt.total)) return;
+    if (THREE_DECIMALS.has(code) === THREE_DECIMALS.has(receipt.currency ?? "")) return;
+    applyReceipt(parseReceipt(ocrLines, { recentCurrency, currency: code }));
   }
 
   /** Text only, after consent; the photo itself is long gone. */
@@ -723,7 +741,7 @@ export function TransactionModal({
               visible={currencyOpen}
               selected={currency}
               recent={recentCurrency}
-              onSelect={setCurrency}
+              onSelect={pickCurrency}
               onClose={() => setCurrencyOpen(false)}
             />
           </View>
