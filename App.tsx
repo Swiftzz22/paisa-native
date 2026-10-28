@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { C } from "./theme";
 import {
@@ -48,6 +48,15 @@ const LOCK_GRACE_MS = 60_000;
 /** Window after a successful unlock during which re-locking is refused. */
 const RELOCK_SUPPRESS_MS = 3_000;
 
+/**
+ * Dev only: show the welcome intro and sign-in screen on every launch, even
+ * when signed in, so they can be looked at without signing out. The stored
+ * token is never touched and the intro is not marked seen. Set
+ * EXPO_PUBLIC_PREVIEW_INTRO=1 in .env.local and restart Metro with --clear.
+ * __DEV__ is false in store builds, so this can never reach users.
+ */
+const PREVIEW_INTRO = __DEV__ && process.env.EXPO_PUBLIC_PREVIEW_INTRO === "1";
+
 type Phase =
   | { kind: "booting" }
   | { kind: "intro" }
@@ -59,6 +68,7 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      if (PREVIEW_INTRO) return setState({ kind: "intro" });
       const token = await getToken();
       if (token) return setState({ kind: "main", token });
       // Explain what paisa. is before asking anyone to sign in to it.
@@ -124,7 +134,7 @@ export default function App() {
         <StatusBar style="light" />
         <WelcomeScreen
           onDone={() => {
-            markIntroSeen();
+            if (!PREVIEW_INTRO) markIntroSeen();
             setState({ kind: "connect" });
           }}
         />
@@ -137,6 +147,15 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <ConnectScreen onConnected={onConnected} />
+        {PREVIEW_INTRO ? (
+          // onConnected reads the stored token, so this lands back in the
+          // account that was signed in all along.
+          <SafeAreaView edges={["top"]} style={styles.previewBar} pointerEvents="box-none">
+            <Pressable onPress={onConnected} style={styles.previewPill} hitSlop={8}>
+              <Text style={styles.previewText}>Preview · Back to app</Text>
+            </Pressable>
+          </SafeAreaView>
+        ) : null}
       </SafeAreaProvider>
     );
   }
@@ -501,6 +520,17 @@ function TabPane({ active, children }: { active: boolean; children: ReactNode })
 }
 
 const styles = StyleSheet.create({
+  previewBar: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
+  previewPill: {
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: C.badge,
+    borderWidth: 1,
+    borderColor: C.glassEdge,
+  },
+  previewText: { color: C.highlight, fontSize: 12, fontWeight: "600" },
   safe: { flex: 1, backgroundColor: C.bg },
   body: { flex: 1 },
   paneHidden: { display: "none" },
