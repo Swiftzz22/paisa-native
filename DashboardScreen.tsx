@@ -44,6 +44,7 @@ import { requestAiConsent } from "./aiConsent";
 import { useHiddenTxnIds } from "./undoDelete";
 import { SafeToSpendHero } from "./SafeToSpend";
 import { Tip } from "./Tip";
+import { SpendingCalendar } from "./SpendingCalendar";
 import { useDashboardTip } from "./tips";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
@@ -935,6 +936,13 @@ export function DashboardScreen({
               )}
             </View>
           </View>
+
+          <SpendingCalendar
+            token={token}
+            version={version}
+            onEdit={onEdit}
+            onNeedAuth={onNeedAuth}
+          />
 
           <View style={{ marginTop: 26 }}>
             <Text style={styles.sectionTitle}>Recent</Text>
