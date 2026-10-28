@@ -27,6 +27,8 @@ export const C = {
   accent: "#3b82f6",
   /** The bright edge of the glow: the ₹ glyph, highlights, the active dot. */
   highlight: "#7ab0ff",
+  /** Fill behind the glowing ₹ and other icon badges: navy tipped toward the blue. */
+  badge: "#13203d",
 };
 
 /** Amounts are set in mono so columns of figures line up digit for digit. */
