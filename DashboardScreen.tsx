@@ -205,6 +205,24 @@ export function DashboardScreen({
   const [serverCustom, setServerCustom] = useState<Insights | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [importing, setImporting] = useState(false);
+  // The first transaction gets a moment in the Getting started card before
+  // the dashboard takes over: noticed when a load goes from empty to not.
+  const [arrived, setArrived] = useState<Txn | null>(null);
+  const wasEmpty = useRef(false);
+  useEffect(() => {
+    if (!data) return;
+    if (data.recent.length === 0) {
+      wasEmpty.current = true;
+    } else if (wasEmpty.current) {
+      wasEmpty.current = false;
+      setArrived(data.recent[0]);
+    }
+  }, [data]);
+  useEffect(() => {
+    if (!arrived) return;
+    const t = setTimeout(() => setArrived(null), 3200);
+    return () => clearTimeout(t);
+  }, [arrived]);
   const [rangeSheet, setRangeSheet] = useState(false);
 
   // The donut was a fixed 160pt, which left ~123pt for the legend on a 375pt
@@ -443,8 +461,9 @@ export function DashboardScreen({
         </Text>
       ) : null}
 
-      {data && data.recent.length === 0 ? (
+      {data && (data.recent.length === 0 || arrived) ? (
         <GettingStarted
+          arrived={arrived}
           emailConnected={data.emailConnected ?? false}
           onAdd={() => onAdd?.()}
           importing={importing}
@@ -478,7 +497,7 @@ export function DashboardScreen({
         />
       ) : null}
 
-      {data && data.recent.length > 0 ? (
+      {data && data.recent.length > 0 && !arrived ? (
         <>
           <View style={styles.hero}>
             <Text style={styles.heroLabel}>Spent in {data.monthLabel}</Text>
