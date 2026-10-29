@@ -13,6 +13,7 @@ import {
 import { C, R } from "./theme";
 import { inr, relativeDate, categoryIcon, categoryColor } from "./format";
 import { type Txn } from "./api";
+import { money } from "./currency";
 import { tapSelection } from "./haptics";
 
 type Filter = "all" | "debit" | "credit";
@@ -236,10 +237,21 @@ export function TransactionsScreen({
                   {t.category} · {relativeDate(t.occurredAt, t.timeKnown)} · {t.paymentMode}
                 </Text>
               </View>
-              <Text style={[styles.txnAmt, credit && { color: C.green }]}>
-                {credit ? "+" : "−"}
-                {inr(t.amount)}
-              </Text>
+              <View style={styles.amtCol}>
+                <Text style={[styles.txnAmt, credit && { color: C.green }]}>
+                  {credit ? "+" : "−"}
+                  {inr(t.amount)}
+                </Text>
+                {/* What was actually paid, under the rupees it counts as. */}
+                {t.split || t.original ? (
+                  <Text style={styles.txnOrig}>
+                    {/* A split shows the whole bill: the amount above is your share. */}
+                    {t.original ? money(t.original.amount, t.original.currency) : null}
+                    {t.split && t.original ? " · " : null}
+                    {t.split ? (t.original ? "split" : `of ${inr(t.split.total)}`) : null}
+                  </Text>
+                ) : null}
+              </View>
             </Pressable>
           );
         }}
@@ -313,4 +325,6 @@ const styles = StyleSheet.create({
   txnMerchant: { fontSize: 14, color: C.text },
   txnSub: { fontSize: 12, color: C.subtle, marginTop: 2 },
   txnAmt: { fontSize: 14, color: C.text, fontWeight: "500" },
+  amtCol: { alignItems: "flex-end" },
+  txnOrig: { fontSize: 11, color: C.subtle, marginTop: 2 },
 });

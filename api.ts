@@ -1,7 +1,12 @@
 import * as SecureStore from "expo-secure-store";
 import { showPaywall } from "./paywallBus";
 
-export const API_BASE = "https://paisa-tawny.vercel.app";
+/**
+ * Overridable so the plus branch can talk to a Vercel preview of the backend
+ * while its new endpoints are being built, without touching production.
+ */
+export const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE ?? "https://paisa-tawny.vercel.app";
 const TOKEN_KEY = "paisa_mobile_token";
 
 export type Dashboard = {
@@ -14,6 +19,12 @@ export type Dashboard = {
     appleLinked?: boolean;
     /** Whether paisa. plus is live, as the server sees it. */
     plus?: boolean;
+    /**
+     * Whether Plus features may be used right now — true for everyone while
+     * the paywall is off. What on-device features like scanning check.
+     * Absent from servers that predate it; fall back to `plus`.
+     */
+    plusAccess?: boolean;
   };
   /** Whether a Gmail account is linked, so an empty screen can explain itself. */
   emailConnected?: boolean;
@@ -73,6 +84,60 @@ export type Txn = {
    * and the web's date form record noon rather than a real moment.
    */
   timeKnown?: boolean;
+  /**
+   * What was on the receipt, for foreign-currency spend (paisa. plus).
+   * `amount` above is always the rupee figure; absent or null otherwise.
+   */
+  original?: {
+    amount: number;
+    currency: string;
+    /** INR for one unit, from the day of purchase. */
+    rate: number;
+    rateDate: string | null;
+  } | null;
+  /**
+   * Present when the expense is split (paisa. plus). `amount` is then your
+   * share; `split.total` is the whole bill.
+   */
+  split?: TxnSplit | null;
+};
+
+export type SplitMode = "equal" | "exact" | "percent" | "shares" | "items";
+
+export type TxnSplit = {
+  total: number;
+  mode: SplitMode | null;
+  /** null = you paid. */
+  paidBy: string | null;
+  shares: { personId: string | null; name: string | null; amount: number; weight: number }[];
+};
+
+/** What the app sends to split an expense; the server works out the rupees. */
+export type SplitPlan = {
+  paidBy: string | null;
+  mode: SplitMode;
+  entries: { personId: string | null; weight: number }[];
+};
+
+export type Person = {
+  id: string;
+  name: string;
+  phone: string | null;
+  upiId: string | null;
+  archived: boolean;
+  /** From your side: positive = they owe you, negative = you owe them. */
+  balance: number;
+};
+
+export type PersonActivity = {
+  kind: "split" | "settlement";
+  id: string;
+  title: string;
+  at: string;
+  total: number;
+  /** How this moved the balance, from your side. */
+  effect: number;
+  note?: string | null;
 };
 
 export type Meta = {
@@ -87,8 +152,15 @@ export type NewTxn = {
   paymentMode: string;
   type: "debit" | "credit";
   note?: string;
-  /** ISO time; the server uses now when it is left out. */
+  /** ISO instant. Omitted means now; a scanned receipt sends its own date. */
   occurredAt?: string;
+  /**
+   * Set for a foreign receipt: the server converts at the purchase day's rate
+   * and `amount` is ignored. `null` on an edit makes it a rupee expense again.
+   */
+  original?: { amount: number; currency: string } | null;
+  /** So "the day of purchase" is the phone's day, not the server's. */
+  tzOffset?: number;
 };
 
 export class AuthError extends Error {}
@@ -207,6 +279,116 @@ export function updateTransaction(
     method: "PATCH",
     body: JSON.stringify(body),
   });
+}
+
+export type FxQuote = {
+  currency: string;
+  /** INR for one unit of `currency`. */
+  inrPerUnit: number;
+  /** The day the rate is from — earlier than asked for over a weekend. */
+  rateDate: string;
+};
+
+/**
+ * A rate for showing "≈ ₹…" while someone types. Only a preview: the server
+ * looks the rate up again itself when the transaction is saved.
+ */
+export function fetchFxRate(
+  token: string,
+  currency: string,
+  date: string
+): Promise<FxQuote> {
+  const q = new URLSearchParams({ currency, date });
+  return authed(token, `/api/mobile/fx?${q}`);
+}
+
+export type AiReceipt = {
+  merchant: string | null;
+  date: string | null;
+  total: number | null;
+  currency: string | null;
+  items: { name: string; amount: number; qty?: number }[];
+  extras: { label: string; amount: number }[];
+};
+
+/**
+ * The fallback for a receipt the phone couldn't read on its own. Sends the
+ * recognised *text* only — the photo stays on the device. Callers must have
+ * AI consent first.
+ */
+export function aiReadReceipt(
+  token: string,
+  lines: string[],
+  recentCurrency: string | null
+): Promise<{ receipt: AiReceipt }> {
+  return authed(token, "/api/mobile/receipt", {
+    method: "POST",
+    body: JSON.stringify({ lines, recentCurrency }),
+  });
+}
+
+/**
+ * A category for a scanned receipt's merchant, from their own rules or, failing
+ * that, AI. Sends the merchant and a few item names only. Callers must have AI
+ * consent first.
+ */
+export function categorizeReceipt(
+  token: string,
+  merchant: string,
+  items: string[]
+): Promise<{ categoryId: string | null; label: string | null; from: "rule" | "ai" }> {
+  return authed(token, "/api/mobile/categorize", {
+    method: "POST",
+    body: JSON.stringify({ merchant, items: items.slice(0, 12) }),
+  });
+}
+
+export function fetchPeople(token: string): Promise<{ people: Person[] }> {
+  return authed(token, "/api/mobile/people");
+}
+
+export function createPerson(
+  token: string,
+  body: { name: string; phone?: string | null; upiId?: string | null }
+): Promise<{ person: Person }> {
+  return authed(token, "/api/mobile/people", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function updatePerson(
+  token: string,
+  id: string,
+  body: { name?: string; phone?: string | null; upiId?: string | null; archived?: boolean }
+): Promise<{ person: Person }> {
+  return authed(token, `/api/mobile/people/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+}
+
+export function fetchPerson(
+  token: string,
+  id: string
+): Promise<{ person: Person; activity: PersonActivity[] }> {
+  return authed(token, `/api/mobile/people/${id}`);
+}
+
+export function saveSplit(token: string, txnId: string, plan: SplitPlan): Promise<{ ok: true }> {
+  return authed(token, `/api/mobile/transactions/${txnId}/split`, {
+    method: "PUT",
+    body: JSON.stringify(plan),
+  });
+}
+
+export function removeSplit(token: string, txnId: string): Promise<{ ok: true }> {
+  return authed(token, `/api/mobile/transactions/${txnId}/split`, { method: "DELETE" });
+}
+
+export function recordSettlement(
+  token: string,
+  body: { personId: string; amount: number; direction: "paid" | "received"; note?: string | null }
+): Promise<{ settlement: { id: string } }> {
+  return authed(token, "/api/mobile/settlements", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function deleteSettlement(token: string, id: string): Promise<{ ok: true }> {
+  return authed(token, `/api/mobile/settlements/${id}`, { method: "DELETE" });
 }
 
 export function deleteTransaction(token: string, id: string): Promise<{ ok: true }> {

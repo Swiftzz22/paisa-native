@@ -29,6 +29,7 @@ import { notifyError, notifySuccess, tapLight } from "./haptics";
 import { pickAndImportStatement } from "./importStatement";
 import { isAppleSignInAvailable, linkAppleId } from "./appleSignIn";
 import { PlusSheet } from "./PlusSheet";
+import { PeopleScreen } from "./PeopleScreen";
 import { hasAiConsent, requestAiConsent, setAiConsent } from "./aiConsent";
 import { isPlusConfigured } from "./plus";
 
@@ -67,6 +68,7 @@ export function SettingsScreen({
   const [imports, setImports] = useState<ImportSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const plus = user?.plus === true;
   const [appleAvailable, setAppleAvailable] = useState(false);
   const [appleLinked, setAppleLinked] = useState(false);
@@ -478,6 +480,26 @@ export function SettingsScreen({
       {/* Hidden until the store is actually wired up. A row that opens a sheet
           saying "Plus isn't available yet" is a dead end, and the reviewer who
           finds it is the one person guaranteed to tap everything. */}
+      {/* Always reachable, Plus or not: balances that already exist are
+          yours to see and settle even if the subscription lapses. */}
+      <Text style={styles.sectionLabel}>Splits</Text>
+      <View style={styles.card}>
+        <Pressable
+          style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
+          onPress={() => {
+            tapLight();
+            setPeopleOpen(true);
+          }}
+        >
+          <Ionicons name="people-outline" size={20} color={C.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.rowLabel}>Splits & balances</Text>
+            <Text style={styles.hint}>Who owes whom, and settling up over UPI</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={C.subtle} />
+        </Pressable>
+      </View>
+
       {isPlusConfigured() ? (
       <>
       <Text style={styles.sectionLabel}>Subscription</Text>
@@ -500,8 +522,8 @@ export function SettingsScreen({
             </Text>
             <Text style={styles.hint}>
               {plus
-                ? "Email sync, unlimited imports and Ask"
-                : "Automatic email sync, unlimited imports and Ask"}
+                ? "Email sync, imports, Ask, scanning, currencies and splits"
+                : "Email sync, receipt scanning, currencies, splits and more"}
             </Text>
           </View>
           {plus ? null : (
@@ -595,6 +617,13 @@ export function SettingsScreen({
       </View>
 
       <Text style={styles.footer}>paisa · connected to {API_BASE.replace("https://", "")}</Text>
+      <PeopleScreen
+        visible={peopleOpen}
+        token={token}
+        onClose={() => setPeopleOpen(false)}
+        onNeedAuth={onSignOut}
+      />
+
       <PlusSheet
         visible={plusOpen}
         onClose={() => setPlusOpen(false)}
