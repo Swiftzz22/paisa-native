@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
   Animated,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +15,7 @@ import {
 import { C, R, R_INNER, SPACE } from "./theme";
 import { inr, relativeDate, categoryIcon, categoryColor } from "./format";
 import {
+  API_BASE,
   AuthError,
   fetchDashboard,
   fetchInsights,
@@ -39,6 +41,11 @@ import { SegmentedControl } from "./SegmentedControl";
 import { tapLight } from "./haptics";
 import type { Flow } from "./FlowDetailScreen";
 import { requestAiConsent } from "./aiConsent";
+import { useHiddenTxnIds } from "./undoDelete";
+import { SafeToSpendHero } from "./SafeToSpend";
+import { Tip } from "./Tip";
+import { SpendingCalendar } from "./SpendingCalendar";
+import { useDashboardTip } from "./tips";
 
 /** "2 new · 14 dates fixed" — or "Up to date" when a sync changed nothing. */
 function summarizeSync(s: SyncResult): string {
@@ -174,10 +181,13 @@ export function DashboardScreen({
   onUser,
   onOpenFlow,
   onAdd,
+  onOpenAsk,
   items,
 }: {
   /** Opens the add-transaction sheet from the empty state. */
   onAdd?: () => void;
+  /** Switches to the Ask tab, from its tip. */
+  onOpenAsk?: () => void;
   token: string;
   version: number;
   /** History held by the shell — lets a custom range be summarised locally. */
@@ -224,6 +234,9 @@ export function DashboardScreen({
     return () => clearTimeout(t);
   }, [arrived]);
   const [rangeSheet, setRangeSheet] = useState(false);
+  // Rows waiting on the undo toast leave Recent at once, like everywhere else.
+  const hidden = useHiddenTxnIds();
+  const { tip, dismiss: dismissTip } = useDashboardTip();
 
   // The donut was a fixed 160pt, which left ~123pt for the legend on a 375pt
   // phone and less than half that at 360 — enough to truncate every category
@@ -422,8 +435,18 @@ export function DashboardScreen({
     );
   }
 
+  const recent = data ? data.recent.filter((t) => !hidden.has(t.id)) : [];
   const down = data ? data.deltaPercent <= 0 : true;
   const deltaPct = data ? Math.abs(Math.round(data.deltaPercent * 100)) : 0;
+  const deltaPill =
+    deltaPct > 0 ? (
+      <View style={[styles.pill, !down && styles.pillUp]}>
+        <Ionicons name={down ? "arrow-down" : "arrow-up"} size={12} color={down ? C.green : C.red} />
+        <Text style={[styles.pillText, !down && { color: C.red }]}>
+          {deltaPct}% vs last month
+        </Text>
+      </View>
+    ) : null;
 
   return (
     <ScrollView
@@ -500,47 +523,57 @@ export function DashboardScreen({
       {data && data.recent.length > 0 && !arrived ? (
         <>
           <View style={styles.hero}>
-            <Text style={styles.heroLabel}>Spent in {data.monthLabel}</Text>
-            <View style={styles.heroRow}>
-              <Text style={styles.heroAmount}>{inr(data.spent)}</Text>
-              {deltaPct > 0 ? (
-                <View style={[styles.pill, !down && styles.pillUp]}>
-                  <Ionicons
-                    name={down ? "arrow-down" : "arrow-up"}
-                    size={12}
-                    color={down ? C.green : C.red}
-                  />
-                  <Text style={[styles.pillText, !down && { color: C.red }]}>
-                    {deltaPct}% vs last month
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
             {data.budget ? (
-              <View style={{ marginTop: 16 }}>
-                <View style={styles.budgetRow}>
-                  <Text style={styles.budgetText}>
-                    {inr(data.budget.left)} left of {inr(data.budget.cap)}
-                  </Text>
-                  <Text style={styles.budgetText}>
-                    day {data.budget.daysElapsed} / {data.budget.daysInMonth}
-                  </Text>
+              <SafeToSpendHero
+                budget={data.budget}
+                spent={data.spent}
+                monthLabel={data.monthLabel}
+              >
+                {deltaPill}
+              </SafeToSpendHero>
+            ) : (
+              <>
+                <Text style={styles.heroLabel}>Spent in {data.monthLabel}</Text>
+                <View style={styles.heroRow}>
+                  <Text style={styles.heroAmount}>{inr(data.spent)}</Text>
+                  {deltaPill}
                 </View>
-                <View style={styles.track}>
-                  <View
-                    style={[
-                      styles.trackFill,
-                      {
-                        width: `${data.budget.pct}%`,
-                        backgroundColor: data.budget.pct >= 80 ? C.red : C.green,
-                      },
-                    ]}
-                  />
-                </View>
-              </View>
-            ) : null}
+                {/* Quiet on purpose: a budget is what turns this number
+                    into "how much can I spend today", but nobody needs one. */}
+                <Pressable
+                  onPress={() => {
+                    tapLight();
+                    Linking.openURL(`${API_BASE}/settings/budgets`);
+                  }}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.setBudget, pressed && { opacity: 0.6 }]}
+                >
+                  <Text style={styles.setBudgetText}>Set a budget</Text>
+                  <Ionicons name="arrow-forward" size={12} color={C.muted} />
+                </Pressable>
+              </>
+            )}
           </View>
+
+          {tip === "ask" ? (
+            <Tip
+              icon="chatbubble-ellipses-outline"
+              text="Ask about your spending in plain English, like “How much did I spend on food this month?”"
+              action={
+                onOpenAsk
+                  ? {
+                      label: "Try Ask",
+                      onPress: () => {
+                        dismissTip("ask");
+                        onOpenAsk();
+                      },
+                    }
+                  : undefined
+              }
+              onDismiss={() => dismissTip("ask")}
+              style={{ marginTop: 12 }}
+            />
+          ) : null}
 
           <View style={{ marginTop: 24 }}>
             <View style={styles.sectionRow}>
@@ -568,6 +601,24 @@ export function DashboardScreen({
                 setAnchor(new Date());
               }}
             />
+
+            {tip === "monthBars" ? (
+              <Tip
+                icon="bar-chart-outline"
+                text="Year shows your last 12 months as bars. Tap a bar to open that month."
+                action={{
+                  label: "Show me",
+                  onPress: () => {
+                    dismissTip("monthBars");
+                    setCustom(null);
+                    setPeriod("year");
+                    setAnchor(new Date());
+                  },
+                }}
+                onDismiss={() => dismissTip("monthBars")}
+                style={{ marginTop: 10 }}
+              />
+            ) : null}
 
             <Pressable
               onPress={() => {
@@ -886,20 +937,27 @@ export function DashboardScreen({
             </View>
           </View>
 
+          <SpendingCalendar
+            token={token}
+            version={version}
+            onEdit={onEdit}
+            onNeedAuth={onNeedAuth}
+          />
+
           <View style={{ marginTop: 26 }}>
             <Text style={styles.sectionTitle}>Recent</Text>
             <View style={{ marginTop: 6 }}>
-              {data.recent.length === 0 ? (
+              {recent.length === 0 ? (
                 <Text style={styles.empty}>No transactions yet.</Text>
               ) : (
-                data.recent.map((t, i) => {
+                recent.map((t, i) => {
                   const credit = t.type === "credit";
                   const tint = credit ? C.green : categoryColor(t.category);
                   return (
                     <Pressable
                       key={t.id}
                       onPress={() => onEdit?.(t)}
-                      style={[styles.txn, i < data.recent.length - 1 && styles.txnBorder]}
+                      style={[styles.txn, i < recent.length - 1 && styles.txnBorder]}
                     >
                       <View style={[styles.txnIcon, { backgroundColor: tint + "26" }]}>
                         <Ionicons
@@ -957,6 +1015,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   heroLabel: { fontSize: 13, color: C.muted },
+  setBudget: { flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start", marginTop: 12 },
+  setBudgetText: { fontSize: 13, color: C.muted, textDecorationLine: "underline" },
   heroRow: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -976,10 +1036,6 @@ const styles = StyleSheet.create({
   },
   pillUp: { backgroundColor: C.redBg },
   pillText: { fontSize: 12, color: C.green, fontWeight: "500" },
-  budgetRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 6 },
-  budgetText: { fontSize: 12, color: C.muted },
-  track: { height: 6, backgroundColor: "#000", borderRadius: R.pill, overflow: "hidden" },
-  trackFill: { height: "100%", borderRadius: R.pill },
   sectionTitle: { fontSize: 15, fontWeight: "600", color: C.text },
   sectionRow: {
     flexDirection: "row",
