@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { C, R } from "./theme";
+import { NightBackground } from "./NightBackground";
 import { API_BASE, clearToken } from "./api";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { signInWithGoogle } from "./googleSignIn";
@@ -94,96 +95,104 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
   }
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <View style={styles.body}>
-        <View style={styles.logo}>
-          <Ionicons name="wallet" size={30} color={C.accent} />
-        </View>
-        <Text style={styles.brand}>
-          paisa<Text style={{ color: C.subtle }}>.</Text>
-        </Text>
-        <Text style={styles.subtitle}>
-          Sign in to pick up where your spending left off.
-        </Text>
+    <NightBackground grid>
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.body}>
+          <View style={styles.logo}>
+            <Text style={styles.logoText}>₹</Text>
+          </View>
+          <Text style={styles.brand}>
+            paisa<Text style={{ color: C.accent }}>.</Text>
+          </Text>
+          <Text style={styles.subtitle}>
+            Sign in to pick up where your spending left off.
+          </Text>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        {/* Apple first and in Apple's own styling. Guideline 4.8 requires an
-            equivalent privacy-preserving option wherever a third-party login
-            is offered, and it is also the only way an App Review tester can
-            sign in at all — they have an Apple ID, not the owner's Google
-            account. */}
-        {appleReady ? (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={
-              AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
-            }
-            buttonStyle={
-              AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-            }
-            cornerRadius={R.control}
-            style={styles.appleButton}
-            onPress={busy ? () => {} : signInApple}
-          />
-        ) : null}
+          {/* Apple first and in Apple's own styling. Guideline 4.8 requires an
+              equivalent privacy-preserving option wherever a third-party login
+              is offered, and it is also the only way an App Review tester can
+              sign in at all — they have an Apple ID, not the owner's Google
+              account. */}
+          {appleReady ? (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={
+                AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+              }
+              buttonStyle={
+                AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+              }
+              cornerRadius={R.control}
+              style={styles.appleButton}
+              onPress={busy ? () => {} : signInApple}
+            />
+          ) : null}
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.button,
-            (busy || pressed) && { opacity: 0.85 },
-          ]}
-          onPress={signIn}
-          disabled={busy}
-        >
-          {busy ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="logo-google" size={18} color="#fff" />
-              <Text style={styles.buttonText}>Continue with Google</Text>
-            </>
-          )}
-        </Pressable>
-
-        <Text style={styles.reassure}>
-          paisa. only ever reads. It can never move money or send anything.
-        </Text>
-
-        <View style={styles.legalRow}>
           <Pressable
-            onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
-            style={({ pressed }) => pressed && { opacity: 0.6 }}
+            style={({ pressed }) => [
+              styles.button,
+              (busy || pressed) && { opacity: 0.85 },
+            ]}
+            onPress={signIn}
+            disabled={busy}
           >
-            <Text style={styles.privacy}>Privacy policy</Text>
+            {busy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={18} color="#fff" />
+                <Text style={styles.buttonText}>Continue with Google</Text>
+              </>
+            )}
           </Pressable>
-          <Text style={styles.legalDot}>·</Text>
-          <Pressable
-            onPress={() => Linking.openURL(`${API_BASE}/terms`)}
-            style={({ pressed }) => pressed && { opacity: 0.6 }}
-          >
-            <Text style={styles.privacy}>Terms of use</Text>
-          </Pressable>
+
+          <Text style={styles.reassure}>
+            paisa. only ever reads. It can never move money or send anything.
+          </Text>
+
+          <View style={styles.legalRow}>
+            <Pressable
+              onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
+              style={({ pressed }) => pressed && { opacity: 0.6 }}
+            >
+              <Text style={styles.privacy}>Privacy policy</Text>
+            </Pressable>
+            <Text style={styles.legalDot}>·</Text>
+            <Pressable
+              onPress={() => Linking.openURL(`${API_BASE}/terms`)}
+              style={({ pressed }) => pressed && { opacity: 0.6 }}
+            >
+              <Text style={styles.privacy}>Terms of use</Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </NightBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  safe: { flex: 1 },
   body: { flex: 1, paddingHorizontal: 30, justifyContent: "center" },
   logo: {
     width: 60,
     height: 60,
-    borderRadius: R.card,
-    backgroundColor: C.card,
-    borderWidth: 0.5,
-    borderColor: C.border,
+    borderRadius: R.card - 8,
+    backgroundColor: C.badge,
+    borderWidth: 1,
+    borderColor: C.glassEdge,
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 18,
+    // The app icon's ₹, lit from behind like the glow on the background.
+    shadowColor: C.accent,
+    shadowOpacity: 0.7,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 0 },
   },
-  brand: { fontSize: 30, fontWeight: "700", color: C.text },
+  logoText: { fontSize: 28, fontWeight: "700", color: C.highlight },
+  brand: { fontSize: 30, fontWeight: "700", color: C.text, letterSpacing: -0.6 },
   subtitle: {
     fontSize: 15,
     lineHeight: 21,
@@ -202,6 +211,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: R.control,
     backgroundColor: C.accent,
+    shadowColor: C.accent,
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   reassure: {
@@ -217,7 +230,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  legalDot: { color: "#6b7280", fontSize: 13 },
+  legalDot: { color: C.subtle, fontSize: 13 },
   privacy: {
     fontSize: 12,
     color: C.muted,
