@@ -49,7 +49,7 @@ import {
   rememberForeignCurrency,
 } from "./currency";
 import * as ImagePicker from "expo-image-picker";
-import { extractTextFromImage, isSupported as canReadText } from "expo-text-extractor";
+import { readReceipt, isSupported as canReadText } from "./modules/receipt-ocr";
 import { parseReceipt, THREE_DECIMALS, type ParsedReceipt } from "./receiptParser";
 import { showPaywall } from "./paywallBus";
 import { requestAiConsent } from "./aiConsent";
@@ -354,7 +354,7 @@ export function TransactionModal({
     setScanNote(null);
     setError(null);
     try {
-      const lines = await extractTextFromImage(picked.assets[0].uri);
+      const lines = await readReceipt(picked.assets[0].uri);
       setOcrLines(lines);
       applyReceipt(parseReceipt(lines, { recentCurrency }));
     } catch {
