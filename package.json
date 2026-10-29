@@ -36,7 +36,9 @@
     "web": "expo start --web",
     "build:dev": "eas build --platform ios --profile development",
     "build:preview": "eas build --platform ios --profile preview",
-    "ota": "eas update --channel plus-preview"
+    "build:prod": "eas build --platform ios --profile production",
+    "submit": "eas submit --platform ios --profile production --latest",
+    "ota": "eas update --channel production"
   },
   "private": true
 }

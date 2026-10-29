@@ -7,15 +7,30 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "plus-dev",
+      "channel": "development",
       "ios": {
         "simulator": false
       }
     },
     "preview": {
       "distribution": "internal",
-      "channel": "plus-preview",
+      "channel": "preview",
       "autoIncrement": true
+    },
+    "production": {
+      "distribution": "store",
+      "channel": "production",
+      "autoIncrement": true,
+      "environment": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "sania.kothari@gmail.com",
+        "ascAppId": "6809769696",
+        "appleTeamId": "FP3T7C2Z83"
+      }
     }
   }
 }
