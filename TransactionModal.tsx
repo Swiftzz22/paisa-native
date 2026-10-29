@@ -21,6 +21,7 @@ import {
   AuthError,
   PaywallError,
   aiReadReceipt,
+  categorizeReceipt,
   createTransaction,
   fetchFxRate,
   fetchMeta,
@@ -52,7 +53,7 @@ import * as ImagePicker from "expo-image-picker";
 import { readReceipt, isSupported as canReadText } from "./modules/receipt-ocr";
 import { parseReceipt, THREE_DECIMALS, type ParsedReceipt } from "./receiptParser";
 import { showPaywall } from "./paywallBus";
-import { requestAiConsent } from "./aiConsent";
+import { hasAiConsent, requestAiConsent } from "./aiConsent";
 import { SplitSheet } from "./SplitSheet";
 import { allocate, splitProblem } from "./splitMath";
 
@@ -150,6 +151,11 @@ export function TransactionModal({
   const [receiptFromAi, setReceiptFromAi] = useState(false);
   const [offerAi, setOfferAi] = useState(false);
   const [aiReading, setAiReading] = useState(false);
+  /** Where a scanned receipt's category came from, said under the field. */
+  const [categoryHint, setCategoryHint] = useState<string | null>(null);
+  /** The category as of now, for answers that arrive after someone picked one. */
+  const categoryRef = useRef<string | null>(null);
+  categoryRef.current = categoryId;
 
   /**
    * When the money went out. A receipt's printed date wins; then "yesterday"
@@ -191,6 +197,7 @@ export function TransactionModal({
     setOcrLines(null);
     setReceiptFromAi(false);
     setOfferAi(false);
+    setCategoryHint(null);
     if (editing) {
       setType(editing.type);
       // A foreign expense is edited in the currency it was paid in.
@@ -456,6 +463,7 @@ export function TransactionModal({
     if (r.currency) setCurrency(r.currency);
     const today = localDay(new Date());
     setReceiptDate(r.date && r.date !== today ? r.date : null);
+    if (r.merchant && !categoryRef.current) void fileReceipt(r.merchant, r.items.map((i) => i.name));
 
     // Say what to check, not just that it worked.
     if (r.total === null) {
@@ -476,6 +484,38 @@ export function TransactionModal({
       setScanNote(`Guessed ${r.currency} from the symbol. Tap it to change.`);
     } else {
       setScanNote("Filled in from the receipt.");
+    }
+  }
+
+  /**
+   * File a scanned receipt without being asked. Their own history first, on
+   * the phone and free: if "Lawson" went under Groceries last time, it does
+   * now. Otherwise their rules, then AI, from the merchant and item names only.
+   * Never over a category someone has already chosen, and any failure (no
+   * consent, offline, the route not live yet) just leaves the field to them.
+   */
+  async function fileReceipt(name: string, items: string[]) {
+    if (!meta) return;
+    const local = parseQuickAdd(name, {
+      modes: meta.paymentModes,
+      categories: meta.categories,
+      history,
+    });
+    if (local.categoryId) {
+      setCategoryId((now) => now ?? local.categoryId);
+      setCategoryHint(local.categoryFrom === "history" ? "Same as last time" : null);
+      return;
+    }
+    if (!plusAccess) return;
+    // Asked once; after that it's remembered. Someone who said no isn't nagged.
+    if (!(await hasAiConsent()) && !(await requestAiConsent())) return;
+    try {
+      const got = await categorizeReceipt(token, name, items);
+      if (!got.categoryId || categoryRef.current) return;
+      setCategoryId(got.categoryId);
+      setCategoryHint(got.from === "rule" ? "From your rule" : "Picked by AI from the receipt");
+    } catch (e) {
+      if (e instanceof AuthError) onNeedAuth();
     }
   }
 
@@ -787,6 +827,9 @@ export function TransactionModal({
                   </Text>
                   <Ionicons name="chevron-forward" size={17} color={C.subtle} />
                 </Pressable>
+                {categoryHint && categoryId ? (
+                  <Text style={styles.categoryHint}>{categoryHint} · tap to change</Text>
+                ) : null}
 
                 {type === "debit" ? (
                   <>
@@ -863,7 +906,10 @@ export function TransactionModal({
                 visible={pickerOpen}
                 options={meta.categories}
                 selectedId={categoryId}
-                onSelect={setCategoryId}
+                onSelect={(id) => {
+                  setCategoryId(id);
+                  setCategoryHint(null);
+                }}
                 onClose={() => setPickerOpen(false)}
               />
             ) : null}
@@ -1035,6 +1081,7 @@ const styles = StyleSheet.create({
   },
   scanText: { color: C.accent, fontSize: 13, fontWeight: "600" },
   scanNote: { color: C.muted, fontSize: 13, textAlign: "center", marginTop: 6 },
+  categoryHint: { color: C.subtle, fontSize: 12, marginTop: 6, marginLeft: 4 },
   aiBtn: {
     flexDirection: "row",
     alignItems: "center",

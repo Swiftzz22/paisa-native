@@ -327,6 +327,22 @@ export function aiReadReceipt(
   });
 }
 
+/**
+ * A category for a scanned receipt's merchant, from their own rules or, failing
+ * that, AI. Sends the merchant and a few item names only. Callers must have AI
+ * consent first.
+ */
+export function categorizeReceipt(
+  token: string,
+  merchant: string,
+  items: string[]
+): Promise<{ categoryId: string | null; label: string | null; from: "rule" | "ai" }> {
+  return authed(token, "/api/mobile/categorize", {
+    method: "POST",
+    body: JSON.stringify({ merchant, items: items.slice(0, 12) }),
+  });
+}
+
 export function fetchPeople(token: string): Promise<{ people: Person[] }> {
   return authed(token, "/api/mobile/people");
 }
