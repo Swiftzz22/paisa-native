@@ -33,7 +33,7 @@ const FLOWS: { icon: string; title: string; detail: string }[] = [
     icon: "mail-outline",
     title: "Bank alert emails",
     detail:
-      "If you connect a mailbox, the text of each bank or UPI alert goes to NVIDIA, to read the amount, merchant and category.",
+      "If you connect a mailbox, the text of each bank or UPI alert goes to Google (Gemini) or NVIDIA, whichever is working, to read the amount, merchant and category.",
   },
   {
     icon: "scan-outline",

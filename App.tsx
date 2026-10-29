@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { StatusBar } from "expo-status-bar";
-import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { C } from "./theme";
 import {
@@ -41,12 +41,24 @@ import { onShowPaywall } from "./paywallBus";
 import { AiConsentSheet } from "./AiConsentSheet";
 import { clearAiConsent, hasAiConsent } from "./aiConsent";
 import { initPlus, resetPlus } from "./plus";
+import { UndoToast } from "./UndoToast";
+import { scheduleDelete, useHiddenTxnIds } from "./undoDelete";
+import { notifyError } from "./haptics";
 
 /** How long the app can be backgrounded before it re-locks. */
 const LOCK_GRACE_MS = 60_000;
 
 /** Window after a successful unlock during which re-locking is refused. */
 const RELOCK_SUPPRESS_MS = 3_000;
+
+/**
+ * Dev only: show the welcome intro and sign-in screen on every launch, even
+ * when signed in, so they can be looked at without signing out. The stored
+ * token is never touched and the intro is not marked seen. Set
+ * EXPO_PUBLIC_PREVIEW_INTRO=1 in .env.local and restart Metro with --clear.
+ * __DEV__ is false in store builds, so this can never reach users.
+ */
+const PREVIEW_INTRO = __DEV__ && process.env.EXPO_PUBLIC_PREVIEW_INTRO === "1";
 
 type Phase =
   | { kind: "booting" }
@@ -59,6 +71,7 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
+      if (PREVIEW_INTRO) return setState({ kind: "intro" });
       const token = await getToken();
       if (token) return setState({ kind: "main", token });
       // Explain what paisa. is before asking anyone to sign in to it.
@@ -124,7 +137,7 @@ export default function App() {
         <StatusBar style="light" />
         <WelcomeScreen
           onDone={() => {
-            markIntroSeen();
+            if (!PREVIEW_INTRO) markIntroSeen();
             setState({ kind: "connect" });
           }}
         />
@@ -137,6 +150,15 @@ export default function App() {
       <SafeAreaProvider>
         <StatusBar style="light" />
         <ConnectScreen onConnected={onConnected} />
+        {PREVIEW_INTRO ? (
+          // onConnected reads the stored token, so this lands back in the
+          // account that was signed in all along.
+          <SafeAreaView edges={["top"]} style={styles.previewBar} pointerEvents="box-none">
+            <Pressable onPress={onConnected} style={styles.previewPill} hitSlop={8}>
+              <Text style={styles.previewText}>Preview · Back to app</Text>
+            </Pressable>
+          </SafeAreaView>
+        ) : null}
       </SafeAreaProvider>
     );
   }
@@ -377,6 +399,30 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
     loadTxns();
   }, [loadTxns, version]);
 
+  // A deleted row leaves every list at once, while the toast still offers Undo.
+  const hidden = useHiddenTxnIds();
+  const visibleTxns = useMemo(
+    () => (hidden.size ? txns.filter((t) => !hidden.has(t.id)) : txns),
+    [txns, hidden]
+  );
+
+  const deleteWithUndo = useCallback(
+    (t: Txn) => {
+      setModalOpen(false);
+      scheduleDelete({
+        token,
+        txn: t,
+        onCommitted: () => setVersion((v) => v + 1),
+        onFailed: (e) => {
+          if (e instanceof AuthError) return signOut();
+          notifyError();
+          Alert.alert(`Couldn't delete ${t.merchant}`, "It's back in your list. Try again in a moment.");
+        },
+      });
+    },
+    [token, signOut]
+  );
+
   // Sync on open, but not on every open.
   //
   // A sync fetches Gmail and runs a parse batch — by far the heaviest call the
@@ -408,14 +454,15 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
               onUser={setUser}
               onOpenFlow={setFlow}
               onAdd={openAdd}
-              items={txns}
+              onOpenAsk={() => setTab("ask")}
+              items={visibleTxns}
             />
           </TabPane>
         )}
         {visited.has("activity") && (
           <TabPane active={tab === "activity"}>
             <TransactionsScreen
-              items={txns}
+              items={visibleTxns}
               loading={txnsLoading}
               loadingMore={txnsMore}
               error={txnsError}
@@ -440,13 +487,14 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
             />
           </TabPane>
         )}
+        <UndoToast bottom={12} />
       </View>
 
       <TabBar active={tab} onTab={setTab} onAdd={openAdd} />
 
       <FlowDetailScreen
         flow={flow}
-        items={txns}
+        items={visibleTxns}
         loading={txnsLoading}
         onClose={() => setFlow(null)}
         onEdit={(t) => {
@@ -474,7 +522,9 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
         token={token}
         editing={editing}
         plusAccess={user?.plusAccess ?? user?.plus === true}
+        history={txns}
         onClose={() => setModalOpen(false)}
+        onDelete={deleteWithUndo}
         onSaved={() => {
           setModalOpen(false);
           setVersion((v) => v + 1);
@@ -502,6 +552,17 @@ function TabPane({ active, children }: { active: boolean; children: ReactNode })
 }
 
 const styles = StyleSheet.create({
+  previewBar: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
+  previewPill: {
+    marginTop: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: C.badge,
+    borderWidth: 1,
+    borderColor: C.glassEdge,
+  },
+  previewText: { color: C.highlight, fontSize: 12, fontWeight: "600" },
   safe: { flex: 1, backgroundColor: C.bg },
   body: { flex: 1 },
   paneHidden: { display: "none" },

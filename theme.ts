@@ -1,17 +1,40 @@
+import { Platform } from "react-native";
+
+/**
+ * Night Ledger: midnight navy lit from behind by the rupee blue of the app
+ * icon. The web landing uses the same values, so keep the two in step.
+ *
+ * `card`, `card2` and `border` are the glass values below already blended onto
+ * `bg`. Sheets and modals sit on top of other content, so a see-through card
+ * there would show the screen underneath; the solid blend looks identical
+ * against plain `bg`. Use `glass`/`glassEdge` only over `NightBackground`,
+ * where the glow is meant to show through.
+ */
 export const C = {
-  bg: "#0a0a0a",
-  card: "#18181b",
-  card2: "#1f1f23",
-  border: "#27272a",
-  text: "#fafafa",
-  muted: "#a1a1aa",
-  subtle: "#71717a",
-  green: "#22c55e",
-  greenBg: "rgba(34,197,94,0.15)",
+  bg: "#070b16",
+  card: "#131722",
+  card2: "#1b1f29",
+  border: "#1d212b",
+  glass: "rgba(255,255,255,0.05)",
+  glassEdge: "rgba(255,255,255,0.09)",
+  text: "#e9efff",
+  muted: "#8792ad",
+  subtle: "#6b7590",
+  green: "#4ade80",
+  greenBg: "rgba(74,222,128,0.15)",
   red: "#f87171",
   redBg: "rgba(248,113,113,0.15)",
   accent: "#3b82f6",
+  /** The bright edge of the glow: the ₹ glyph, highlights, the active dot. */
+  highlight: "#7ab0ff",
+  /** Budget is close to running out: still under, but only just. */
+  amber: "#fbbf24",
+  /** Fill behind the glowing ₹ and other icon badges: navy tipped toward the blue. */
+  badge: "#13203d",
 };
+
+/** Amounts are set in mono so columns of figures line up digit for digit. */
+export const MONO = Platform.OS === "ios" ? "Menlo" : "monospace";
 
 /**
  * Nested corners share a centre.

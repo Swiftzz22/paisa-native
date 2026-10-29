@@ -37,6 +37,11 @@ export type Dashboard = {
     daysElapsed: number;
     daysInMonth: number;
     pct: number;
+    /**
+     * Spent against the capped categories. Newer servers send it; without it
+     * `left` stands in until it bottoms out at zero.
+     */
+    spent?: number;
   } | null;
   categories: { name: string; amount: number; pct: number; color: string }[];
   recent: {
@@ -372,6 +377,27 @@ export function deleteSettlement(token: string, id: string): Promise<{ ok: true 
 
 export function deleteTransaction(token: string, id: string): Promise<{ ok: true }> {
   return authed(token, `/api/mobile/transactions/${id}`, { method: "DELETE" });
+}
+
+export type CalendarMonthData = {
+  month: string;
+  /** One per day from the 1st to today (or month end); debits only, in rupees. */
+  days: { date: string; total: number; count: number }[];
+  noSpendDays: number;
+  max: number;
+};
+
+/** A month of daily spending for the calendar. `month` is "YYYY-MM". */
+export function fetchCalendarMonth(token: string, month: string): Promise<CalendarMonthData> {
+  return authed(token, `/api/mobile/calendar?month=${month}&tzOffset=${tzOffsetMinutes()}`);
+}
+
+/** One day's transactions. `day` is "YYYY-MM-DD". */
+export function fetchCalendarDay(
+  token: string,
+  day: string
+): Promise<{ date: string; transactions: Txn[] }> {
+  return authed(token, `/api/mobile/calendar?day=${day}&tzOffset=${tzOffsetMinutes()}`);
 }
 
 /**

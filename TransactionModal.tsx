@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import {
   ActionSheetIOS,
@@ -15,19 +15,18 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { C, R, R_INNER, R_THUMB, SPACE } from "./theme";
+import { C, MONO, R, R_INNER, R_THUMB, SPACE, concentric } from "./theme";
 import { inr } from "./format";
 import {
   AuthError,
   PaywallError,
   aiReadReceipt,
   createTransaction,
-  deleteTransaction,
+  fetchFxRate,
+  fetchMeta,
   fetchPeople,
   removeSplit,
   saveSplit,
-  fetchFxRate,
-  fetchMeta,
   tzOffsetMinutes,
   updateTransaction,
   type FxQuote,
@@ -39,6 +38,7 @@ import {
 } from "./api";
 import { notifySuccess, notifyError, tapLight } from "./haptics";
 import { CategoryPicker } from "./CategoryPicker";
+import { occurredAtFor, parseQuickAdd, type QuickParse } from "./quickAdd";
 import { CurrencyPicker } from "./CurrencyPicker";
 import {
   HOME,
@@ -55,6 +55,15 @@ import { showPaywall } from "./paywallBus";
 import { requestAiConsent } from "./aiConsent";
 import { SplitSheet } from "./SplitSheet";
 import { allocate, splitProblem } from "./splitMath";
+
+type Form = {
+  amount: string;
+  merchant: string;
+  categoryId: string | null;
+  paymentMode: string | null;
+  day: QuickParse["day"];
+  note: string;
+};
 
 /** A saved split, turned back into the plan the split sheet edits. */
 function planFromTxn(t: Txn): SplitPlan | null {
@@ -85,8 +94,10 @@ export function TransactionModal({
   token,
   editing,
   plusAccess,
+  history = [],
   onClose,
   onSaved,
+  onDelete,
   onNeedAuth,
 }: {
   visible: boolean;
@@ -94,8 +105,12 @@ export function TransactionModal({
   editing: Txn | null;
   /** Whether Plus features are open to this person (scanning runs on-device). */
   plusAccess: boolean;
+  /** Their recent transactions, so quick add can file a merchant where they did last time. */
+  history?: Txn[];
   onClose: () => void;
   onSaved: () => void;
+  /** Hands the row to the undo toast; nothing is sent until that runs out. */
+  onDelete: (t: Txn) => void;
   onNeedAuth: () => void;
 }) {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -104,10 +119,14 @@ export function TransactionModal({
   const [merchant, setMerchant] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [paymentMode, setPaymentMode] = useState<string | null>(null);
+  const [day, setDay] = useState<QuickParse["day"]>(null);
+  const [note, setNote] = useState("");
+  const [quick, setQuick] = useState("");
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const amountRef = useRef<TextInput>(null);
+  const merchantRef = useRef<TextInput>(null);
   // What the typed amount is in. Rupees unless someone chooses otherwise.
   const [currency, setCurrency] = useState(HOME.code);
   const [recentCurrency, setRecentCurrency] = useState<string | null>(null);
@@ -132,11 +151,20 @@ export function TransactionModal({
   const [offerAi, setOfferAi] = useState(false);
   const [aiReading, setAiReading] = useState(false);
 
+  /**
+   * When the money went out. A receipt's printed date wins; then "yesterday"
+   * from quick add; otherwise now. Undefined means the server's now.
+   */
+  const occurredAt = receiptDate
+    ? // Local noon, on the minute: the server reads that as "date only" and
+      // won't print a time the receipt never gave.
+      new Date(`${receiptDate}T12:00:00`).toISOString()
+    : occurredAtFor(day);
   // The rate belongs to the day the money was spent: the original date when
-  // editing, the receipt's date when one was scanned, otherwise today.
+  // editing, otherwise the day worked out above.
   const spentDay = editing
     ? localDay(new Date(editing.occurredAt))
-    : receiptDate ?? localDay(new Date());
+    : localDay(occurredAt ? new Date(occurredAt) : new Date());
   const foreign = currency !== HOME.code;
 
   // Load category / payment-mode options once.
@@ -154,6 +182,9 @@ export function TransactionModal({
   useEffect(() => {
     if (!visible) return;
     setError(null);
+    setDay(null);
+    setNote("");
+    setQuick("");
     setScanNote(null);
     setReceiptDate(null);
     setReceipt(null);
@@ -171,6 +202,7 @@ export function TransactionModal({
       setMerchant(editing.merchant);
       setCategoryId(editing.categoryId ?? null);
       setPaymentMode(editing.paymentMode);
+      setNote(editing.note ?? "");
     } else {
       setType("debit");
       setAmount("");
@@ -220,6 +252,12 @@ export function TransactionModal({
   }, [visible, foreign, currency, spentDay, token, onNeedAuth]);
 
   const amountNum = parseFloat(amount);
+  const current: Form = { amount, merchant, categoryId, paymentMode, day, note };
+  const valid = isComplete(current);
+  const labelOf = (id: string | null) =>
+    meta?.categories.find((c) => c.id === id)?.label ?? null;
+  const categoryLabel = labelOf(categoryId);
+  const busy = saving;
 
   // "Split 3 ways · your share S$15.00", previewed in the bill's currency.
   const splitSummary = (() => {
@@ -231,41 +269,83 @@ export function TransactionModal({
       : null;
     return `Split ${splitPlan.entries.length} ways · your share ${money(mine, currency)}${payer ? ` · ${payer} paid` : ""}`;
   })();
-  const valid = amountNum > 0 && !!merchant.trim() && !!categoryId && !!paymentMode;
-  const categoryLabel =
-    meta?.categories.find((c) => c.id === categoryId)?.label ?? null;
-  const busy = saving || deleting;
 
-  async function save() {
-    if (!valid || busy) return;
+  const parsed = useMemo(
+    () =>
+      meta && quick.trim()
+        ? parseQuickAdd(quick, {
+            modes: meta.paymentModes,
+            categories: meta.categories,
+            history,
+          })
+        : null,
+    [quick, meta, history]
+  );
+
+  /** The quick-add result laid over the form; a part it lacks keeps the form's value. */
+  function merged(p: QuickParse): Form {
+    return {
+      amount: p.amount != null ? String(p.amount) : amount,
+      merchant: p.merchant ?? merchant,
+      categoryId: p.categoryId ?? categoryId,
+      paymentMode: p.paymentMode ?? paymentMode,
+      day: p.day ?? day,
+      note: p.withName ? `with ${p.withName}` : note,
+    };
+  }
+
+  function fill(f: Form) {
+    setAmount(f.amount);
+    setMerchant(f.merchant);
+    setCategoryId(f.categoryId);
+    setPaymentMode(f.paymentMode);
+    setDay(f.day);
+    setNote(f.note);
+  }
+
+  /** Copy into the form and save, or stop at the first part still missing. */
+  function quickAdd() {
+    if (!parsed) return;
+    tapLight();
+    const f = merged(parsed);
+    fill(f);
+    setQuick("");
+    if (isComplete(f)) return save(f);
+    if (!(parseFloat(f.amount) > 0)) amountRef.current?.focus();
+    else if (!f.merchant.trim()) merchantRef.current?.focus();
+    else if (!f.categoryId) setPickerOpen(true);
+  }
+
+  async function save(f: Form = current) {
+    if (!isComplete(f) || busy) return;
+    const bill = parseFloat(f.amount);
+    // Worked out from the form being saved, not the last render: quick add
+    // saves straight after filling it, before "yesterday" has re-rendered.
+    const when = receiptDate ? occurredAt : occurredAtFor(f.day);
+    const plan = type === "debit" ? splitPlan : null;
+    const planProblem = plan ? splitProblem(plan, bill) : null;
+    if (planProblem) {
+      setError(`The split doesn't add up any more: ${planProblem} Open it to fix.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     const body: NewTxn = {
-      amount: amountNum,
-      merchant: merchant.trim(),
-      categoryId: categoryId!,
-      paymentMode: paymentMode!,
+      amount: bill,
+      merchant: f.merchant.trim(),
+      categoryId: f.categoryId!,
+      paymentMode: f.paymentMode!,
       type,
+      ...(f.note.trim() ? { note: f.note.trim() } : {}),
+      ...(!editing && when ? { occurredAt: when } : {}),
     };
     if (foreign) {
       // The server works out the rupees itself from the purchase day's rate;
       // `amount` still has to be present and positive to pass validation.
-      body.original = { amount: amountNum, currency };
+      body.original = { amount: bill, currency };
       body.tzOffset = tzOffsetMinutes();
     } else if (editing?.original) {
       body.original = null; // switched back to rupees
-    }
-    if (!editing && receiptDate) {
-      // Local noon, on the minute: the server reads that as "date only" and
-      // won't print a time the receipt never gave.
-      body.occurredAt = new Date(`${receiptDate}T12:00:00`).toISOString();
-    }
-    const plan = type === "debit" ? splitPlan : null;
-    const planProblem = plan ? splitProblem(plan, amountNum) : null;
-    if (planProblem) {
-      setSaving(false);
-      setError(`The split doesn't add up any more: ${planProblem} Open it to fix.`);
-      return;
     }
     let savedId: string;
     try {
@@ -431,32 +511,6 @@ export function TransactionModal({
     }
   }
 
-  function confirmDelete() {
-    if (!editing || busy) return;
-    Alert.alert("Delete transaction?", `${editing.merchant} · ${inr(editing.amount)}`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          setDeleting(true);
-          setError(null);
-          try {
-            await deleteTransaction(token, editing.id);
-            notifySuccess();
-            onSaved();
-          } catch (e) {
-            if (e instanceof AuthError) return onNeedAuth();
-            notifyError();
-            setError("Couldn't delete. Try again.");
-          } finally {
-            setDeleting(false);
-          }
-        },
-      },
-    ]);
-  }
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
@@ -474,19 +528,18 @@ export function TransactionModal({
                   full scroll away from the row you had just tapped. */}
               {editing ? (
                 <Pressable
-                  onPress={confirmDelete}
+                  // No "Are you sure?": the row goes at once and the toast
+                  // offers Undo, which is the quicker way to be safe.
+                  onPress={() => onDelete(editing)}
                   disabled={busy}
                   hitSlop={10}
+                  accessibilityLabel="Delete transaction"
                   style={({ pressed }) => [
                     styles.headerAction,
                     pressed && { opacity: 0.6 },
                   ]}
                 >
-                  {deleting ? (
-                    <ActivityIndicator size="small" color={C.red} />
-                  ) : (
-                    <Ionicons name="trash-outline" size={21} color={C.red} />
-                  )}
+                  <Ionicons name="trash-outline" size={21} color={C.red} />
                 </Pressable>
               ) : (
                 <Pressable
@@ -518,6 +571,86 @@ export function TransactionModal({
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
               >
+                {!editing ? (
+                  <View style={styles.quick}>
+                    <View style={styles.quickRow}>
+                      <Ionicons name="flash-outline" size={16} color={C.highlight} />
+                      <TextInput
+                        style={styles.quickInput}
+                        placeholder="412 zomato upi"
+                        placeholderTextColor={C.subtle}
+                        value={quick}
+                        onChangeText={setQuick}
+                        onSubmitEditing={quickAdd}
+                        returnKeyType="done"
+                        autoCorrect={false}
+                        autoCapitalize="none"
+                        accessibilityLabel="Quick add"
+                      />
+                      <Pressable
+                        onPress={quickAdd}
+                        disabled={!parsed || busy}
+                        style={({ pressed }) => [
+                          styles.quickAdd,
+                          (!parsed || busy) && { opacity: 0.4 },
+                          pressed && { opacity: 0.8 },
+                        ]}
+                      >
+                        <Text style={styles.quickAddText}>Add</Text>
+                      </Pressable>
+                    </View>
+                    {parsed ? (
+                      <View style={styles.parts}>
+                        <Part
+                          // In whatever the amount is in, so a quick add during
+                          // a trip doesn't claim rupees for a baht amount.
+                          value={
+                            parsed.amount != null
+                              ? foreign
+                                ? money(parsed.amount, currency)
+                                : inr(parsed.amount)
+                              : null
+                          }
+                          missing="Amount"
+                          mono
+                          onMissing={() => {
+                            fill(merged(parsed));
+                            amountRef.current?.focus();
+                          }}
+                        />
+                        <Part
+                          value={parsed.merchant}
+                          missing="Merchant"
+                          onMissing={() => {
+                            fill(merged(parsed));
+                            merchantRef.current?.focus();
+                          }}
+                        />
+                        <Part
+                          value={labelOf(parsed.categoryId)}
+                          missing="Category"
+                          green
+                          onMissing={() => {
+                            fill(merged(parsed));
+                            setPickerOpen(true);
+                          }}
+                        />
+                        <Part
+                          value={
+                            meta.paymentModes.find(
+                              (m) => m.value === (parsed.paymentMode ?? paymentMode)
+                            )?.label ?? null
+                          }
+                          missing="Payment"
+                          onMissing={() => fill(merged(parsed))}
+                        />
+                        {parsed.day ? <Part value={capitalise(parsed.day)} /> : null}
+                        {parsed.withName ? <Part value={`with ${parsed.withName}`} /> : null}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : null}
+
                 <View style={styles.typeToggle}>
                   {(["debit", "credit"] as const).map((t) => (
                     <Pressable
@@ -541,6 +674,7 @@ export function TransactionModal({
                       setCurrencyOpen(true);
                     }}
                     hitSlop={10}
+                    accessibilityLabel={`Currency: ${currencyFor(currency).name}`}
                     style={({ pressed }) => [styles.currencyBtn, pressed && { opacity: 0.6 }]}
                   >
                     <Text
@@ -551,6 +685,7 @@ export function TransactionModal({
                     <Ionicons name="chevron-down" size={14} color={C.subtle} />
                   </Pressable>
                   <TextInput
+                    ref={amountRef}
                     style={styles.amountInput}
                     placeholder="0"
                     placeholderTextColor={C.subtle}
@@ -614,12 +749,24 @@ export function TransactionModal({
 
                 <Text style={styles.label}>Merchant</Text>
                 <TextInput
+                  ref={merchantRef}
                   style={styles.input}
                   placeholder="e.g. Swiggy"
                   placeholderTextColor={C.subtle}
                   value={merchant}
                   onChangeText={setMerchant}
                 />
+
+                {/* What quick add picked up that the form has no field for. A
+                    receipt's own date, shown above, takes the place of "yesterday". */}
+                {!editing && ((day === "yesterday" && !receiptDate) || note) ? (
+                  <View style={[styles.parts, { marginTop: 10 }]}>
+                    {day === "yesterday" && !receiptDate ? (
+                      <Part value="Yesterday" onClear={() => setDay(null)} />
+                    ) : null}
+                    {note ? <Part value={note} onClear={() => setNote("")} /> : null}
+                  </View>
+                ) : null}
 
                 <Text style={styles.label}>Category</Text>
                 <Pressable
@@ -698,7 +845,7 @@ export function TransactionModal({
             {meta ? (
               <Pressable
                 style={[styles.save, (!valid || busy) && styles.saveDisabled]}
-                onPress={save}
+                onPress={() => save()}
                 disabled={!valid || busy}
               >
                 {saving ? (
@@ -751,7 +898,102 @@ export function TransactionModal({
   );
 }
 
+function isComplete(f: Form): boolean {
+  return parseFloat(f.amount) > 0 && !!f.merchant.trim() && !!f.categoryId && !!f.paymentMode;
+}
+
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/**
+ * One parsed piece of a quick-add line. A piece that is missing is drawn
+ * dashed and takes you to the form field that fills it.
+ */
+function Part({
+  value,
+  missing,
+  onMissing,
+  onClear,
+  mono,
+  green,
+}: {
+  value: string | null;
+  missing?: string;
+  onMissing?: () => void;
+  onClear?: () => void;
+  mono?: boolean;
+  green?: boolean;
+}) {
+  if (value == null) {
+    return (
+      <Pressable
+        onPress={() => {
+          tapLight();
+          onMissing?.();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Add ${missing ?? ""}`}
+        style={({ pressed }) => [styles.part, styles.partMissing, pressed && { opacity: 0.6 }]}
+      >
+        <Ionicons name="add" size={13} color={C.muted} />
+        <Text style={styles.partMissingText}>{missing}</Text>
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.part, green && styles.partGreen]}>
+      <Text
+        style={[styles.partText, mono && { fontFamily: MONO }, green && { color: C.green }]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+      {onClear ? (
+        <Pressable onPress={onClear} hitSlop={10} accessibilityLabel={`Remove ${value}`}>
+          <Ionicons name="close" size={13} color={C.muted} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  quick: {
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.glassEdge,
+    borderRadius: R_INNER,
+    padding: 6,
+    paddingLeft: 12,
+    marginBottom: 18,
+  },
+  quickRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  quickInput: { flex: 1, color: C.text, fontSize: 15, paddingVertical: 8 },
+  quickAdd: {
+    backgroundColor: C.accent,
+    borderRadius: concentric(R_INNER, 6),
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  quickAddText: { color: "#fff", fontSize: 14, fontWeight: "600" },
+  parts: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingTop: 8, paddingBottom: 4 },
+  part: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    maxWidth: "100%",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: R.pill,
+    backgroundColor: C.card2,
+    borderWidth: 1,
+    borderColor: C.glassEdge,
+  },
+  partGreen: { backgroundColor: C.greenBg, borderColor: "transparent" },
+  partMissing: { backgroundColor: "transparent", borderStyle: "dashed", borderColor: C.subtle },
+  partText: { color: C.text, fontSize: 13 },
+  partMissingText: { color: C.muted, fontSize: 13 },
   backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
   sheetWrap: { maxHeight: "92%" },
   sheet: {
