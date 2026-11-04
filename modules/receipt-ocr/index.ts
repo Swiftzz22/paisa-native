@@ -9,6 +9,11 @@ type ReceiptOcrNative = {
   canScanDocuments?: boolean;
   recognize(path: string): Promise<TextBlock[]>;
   scanDocument?(): Promise<TextBlock[][]>;
+  /** Absent in builds made before the live scanner was added. */
+  canScanLive?(): Promise<boolean>;
+  startLiveScan?(): Promise<void>;
+  stopLiveScan?(): Promise<void>;
+  addListener?(event: string, listener: (e: Record<string, unknown>) => void): { remove(): void };
 };
 
 // Optional rather than required: a build made before this module existed
@@ -42,4 +47,49 @@ export async function scanReceipt(): Promise<string[] | null> {
   const pages = await native.scanDocument();
   if (pages.length === 0) return null;
   return pages.flatMap((blocks) => blocksToLines(blocks));
+}
+
+/** Whether this iPhone can read receipts and QR codes live (iOS 16+, recent models). */
+export async function canScanLive(): Promise<boolean> {
+  if (!native?.canScanLive || !native.startLiveScan || !native.addListener) return false;
+  try {
+    return await native.canScanLive();
+  } catch {
+    return false;
+  }
+}
+
+export type LiveScan = { stop: () => void };
+
+/**
+ * Open the live scanner: no shutter, no photo. While it's open, `onLines`
+ * gets the receipt text in view (one printed row per entry) about twice a
+ * second, and `onCode` gets each QR code it sees. Call `stop()` once there's
+ * enough to log; `onClosed` fires however it closes, including the person
+ * tapping Close.
+ */
+export function startLiveScan(handlers: {
+  onLines: (lines: string[]) => void;
+  onCode: (data: string) => void;
+  onClosed: () => void;
+}): LiveScan {
+  if (!native?.startLiveScan || !native.addListener) throw new Error("This build can't scan live.");
+  const subs = [
+    native.addListener("onLiveText", (e) => {
+      const blocks = (e.blocks as TextBlock[] | undefined) ?? [];
+      if (blocks.length) handlers.onLines(blocksToLines(blocks));
+    }),
+    native.addListener("onLiveCode", (e) => {
+      if (typeof e.data === "string") handlers.onCode(e.data);
+    }),
+    native.addListener("onLiveClosed", () => {
+      subs.forEach((sub) => sub.remove());
+      handlers.onClosed();
+    }),
+  ];
+  native.startLiveScan().catch(() => {
+    subs.forEach((sub) => sub.remove());
+    handlers.onClosed();
+  });
+  return { stop: () => void native.stopLiveScan?.() };
 }

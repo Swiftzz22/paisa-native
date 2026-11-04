@@ -44,6 +44,25 @@ const cases: [string, string[], { total: number; currency: string; date: string 
   ["Uniqlo, no accents", noAccents(uniqlo), { total: 391000, currency: "VND", date: "2026-10-19" }],
   ["Nike, no accents", noAccents(nike), { total: 4465825, currency: "VND", date: "2026-10-19" }],
   ["Uniqlo, split lines", uniqloSplit, { total: 391000, currency: "VND", date: "2026-10-19" }],
+  // No "$" anywhere: only the address ("TAMPA FL 33604") says it's American,
+  // and the date is month-first and from 2011, which sets the exchange rate.
+  [
+    "Walmart Tampa, no currency printed",
+    [
+      "Walmart", "Save money. Live better.", "(813) 932-0562", "8885 N FLORIDA AVE", "TAMPA FL 33604",
+      "ST# 5221 OP# 00001061 TE# 06 TR# 05332", "BREAD 007225003712 F 2.88 N",
+      "GV PNT BUTTR 007874237003 F 3.84 N", "FOLGERS 002550000377 F 10.48 N",
+      "SUBTOTAL 46.04", "TAX 1 7.000 % 0.26", "TOTAL 46.30", "DEBIT TEND 46.30", "CHANGE DUE 0.00",
+      "46.30 TOTAL PURCHASE", "11/06/11 02:22:54", "# ITEMS SOLD 13",
+    ],
+    { total: 46.3, currency: "USD", date: "2011-11-06" },
+  ],
+  // Addresses that only look like a state and ZIP stay where they are.
+  [
+    "Bengaluru PIN is not a ZIP",
+    ["CAFE COFFEE DAY", "MG Road, Bengaluru KA 560001", "GSTIN 29AAACC1234F1Z5", "28/10/2026", "Cappuccino 210.00", "Grand Total 210.00"],
+    { total: 210, currency: "INR", date: "2026-10-28" },
+  ],
   [
     "India stays INR",
     ["CHAAYOS", "GSTIN 07AABCU9603R1ZX", "28/10/2026", "Masala Chai 180.00", "CGST 4.50", "SGST 4.50", "Grand Total 189.00"],
@@ -55,6 +74,10 @@ const cases: [string, string[], { total: number; currency: string; date: string 
     { total: 14.93, currency: "SGD", date: "2026-10-14" },
   ],
 ];
+
+const madrid = parseReceipt(["MERCADO", "Calle Mayor de 28013 Madrid", "TOTAL 12,40"], { today });
+assert.notEqual(madrid.currency, "USD", "Spanish address isn't Delaware");
+console.log("ok   Spanish address isn't Delaware");
 
 for (const [label, lines, want] of cases) {
   const r = parseReceipt(lines, { today });
