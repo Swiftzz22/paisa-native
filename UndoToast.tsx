@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Animated, AppState, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 import { C, R } from "./theme";
+import { inr } from "./format";
 import { tapLight } from "./haptics";
 import { useReduceMotion } from "./useReduceMotion";
-import { flushDelete, undoDelete, usePendingDelete } from "./undoDelete";
+import {
+  flushDelete,
+  undoDelete,
+  undoLogged,
+  useJustLogged,
+  usePendingDelete,
+} from "./undoDelete";
 
 /**
  * "Deleted Zomato · Undo", floating above the tab bar while a delete waits.
@@ -13,7 +20,15 @@ import { flushDelete, undoDelete, usePendingDelete } from "./undoDelete";
  * the app.
  */
 export function UndoToast({ bottom = 0 }: { bottom?: number }) {
-  const txn = usePendingDelete();
+  const deleting = usePendingDelete();
+  const justLogged = useJustLogged();
+  // A delete in progress outranks a "logged": it's the newer, riskier thing.
+  const txn = deleting ?? justLogged;
+  const message = deleting
+    ? `Deleted ${deleting.merchant}`
+    : justLogged
+      ? `Logged ${inr(justLogged.amount)} at ${justLogged.merchant}`
+      : null;
   const reduce = useReduceMotion();
   const v = useRef(new Animated.Value(0)).current;
   // Holds the last name while the toast fades out after an undo or send.
@@ -27,7 +42,7 @@ export function UndoToast({ bottom = 0 }: { bottom?: number }) {
   }, []);
 
   useEffect(() => {
-    if (txn) setShown(txn.merchant);
+    if (message) setShown(message);
     const anim = Animated.timing(v, {
       toValue: txn ? 1 : 0,
       duration: reduce ? 0 : 220,
@@ -38,7 +53,7 @@ export function UndoToast({ bottom = 0 }: { bottom?: number }) {
       if (finished && !txn) setShown(null);
     });
     return () => anim.stop();
-  }, [txn, reduce, v]);
+  }, [txn, message, reduce, v]);
 
   if (!shown) return null;
 
@@ -56,12 +71,13 @@ export function UndoToast({ bottom = 0 }: { bottom?: number }) {
         accessibilityLiveRegion="polite"
       >
         <Text style={styles.text} numberOfLines={1}>
-          Deleted {shown}
+          {shown}
         </Text>
         <Pressable
           onPress={() => {
             tapLight();
-            undoDelete();
+            if (deleting) undoDelete();
+            else undoLogged();
           }}
           hitSlop={12}
           accessibilityRole="button"

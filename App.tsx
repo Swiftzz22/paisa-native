@@ -42,7 +42,7 @@ import { AiConsentSheet } from "./AiConsentSheet";
 import { clearAiConsent, hasAiConsent } from "./aiConsent";
 import { initPlus, resetPlus } from "./plus";
 import { UndoToast } from "./UndoToast";
-import { scheduleDelete, useHiddenTxnIds } from "./undoDelete";
+import { announceLogged, scheduleDelete, useHiddenTxnIds } from "./undoDelete";
 import { notifyError } from "./haptics";
 
 /** How long the app can be backgrounded before it re-locks. */
@@ -525,6 +525,18 @@ function MainShell({ token, onSignOut }: { token: string; onSignOut: () => void 
         history={txns}
         onClose={() => setModalOpen(false)}
         onDelete={deleteWithUndo}
+        onLogged={(t) =>
+          announceLogged({
+            token,
+            txn: t,
+            onUndone: () => setVersion((v) => v + 1),
+            onFailed: (e) => {
+              if (e instanceof AuthError) return signOut();
+              notifyError();
+              Alert.alert(`Couldn't remove ${t.merchant}`, "It's still logged. Delete it from the list.");
+            },
+          })
+        }
         onSaved={() => {
           setModalOpen(false);
           setVersion((v) => v + 1);

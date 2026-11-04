@@ -42,9 +42,17 @@
         }
       ],
       [
+        "expo-camera",
+        {
+          "cameraPermission": "paisa uses the camera to scan receipts and payment QR codes. Nothing it sees is uploaded.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      [
         "expo-image-picker",
         {
-          "cameraPermission": "paisa uses the camera to scan receipts. The photo is read on your iPhone and is not uploaded.",
+          "cameraPermission": "paisa uses the camera to scan receipts and payment QR codes. Nothing it sees is uploaded.",
           "photosPermission": "paisa reads receipts you choose from your photos. They are read on your iPhone and are not uploaded.",
           "microphonePermission": false
         }

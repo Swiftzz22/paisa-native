@@ -161,6 +161,11 @@ export type NewTxn = {
   original?: { amount: number; currency: string } | null;
   /** So "the day of purchase" is the phone's day, not the server's. */
   tzOffset?: number;
+  /**
+   * The payee's UPI ID, when logged by scanning their QR. The server uses it
+   * to recognise the bank's alert for the same payment and not add it twice.
+   */
+  upiId?: string;
 };
 
 export class AuthError extends Error {}
