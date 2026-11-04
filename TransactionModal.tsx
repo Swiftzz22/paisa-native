@@ -56,6 +56,8 @@ import { showPaywall } from "./paywallBus";
 import { hasAiConsent, requestAiConsent } from "./aiConsent";
 import { SplitSheet } from "./SplitSheet";
 import { allocate, splitProblem } from "./splitMath";
+import { QrScanSheet } from "./QrScanSheet";
+import { categoryFromMcc, type PaymentQr } from "./upiQr";
 
 type Form = {
   amount: string;
@@ -99,6 +101,7 @@ export function TransactionModal({
   onClose,
   onSaved,
   onDelete,
+  onLogged,
   onNeedAuth,
 }: {
   visible: boolean;
@@ -112,6 +115,8 @@ export function TransactionModal({
   onSaved: () => void;
   /** Hands the row to the undo toast; nothing is sent until that runs out. */
   onDelete: (t: Txn) => void;
+  /** Saved without a Save tap (a QR scan): the root shows "Logged … · Undo". */
+  onLogged?: (t: Txn) => void;
   onNeedAuth: () => void;
 }) {
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -151,6 +156,9 @@ export function TransactionModal({
   const [receiptFromAi, setReceiptFromAi] = useState(false);
   const [offerAi, setOfferAi] = useState(false);
   const [aiReading, setAiReading] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  /** The payee's UPI ID from a scanned QR, sent with the save. */
+  const [upiId, setUpiId] = useState<string | null>(null);
   /** Where a scanned receipt's category came from, said under the field. */
   const [categoryHint, setCategoryHint] = useState<string | null>(null);
   /** The category as of now, for answers that arrive after someone picked one. */
@@ -198,6 +206,7 @@ export function TransactionModal({
     setReceiptFromAi(false);
     setOfferAi(false);
     setCategoryHint(null);
+    setUpiId(null);
     if (editing) {
       setType(editing.type);
       // A foreign expense is edited in the currency it was paid in.
@@ -323,8 +332,12 @@ export function TransactionModal({
     else if (!f.categoryId) setPickerOpen(true);
   }
 
-  async function save(f: Form = current) {
+  async function save(
+    f: Form = current,
+    opts: { announce?: boolean; upiId?: string | null } = {}
+  ) {
     if (!isComplete(f) || busy) return;
+    const payee = opts.upiId ?? upiId;
     const bill = parseFloat(f.amount);
     // Worked out from the form being saved, not the last render: quick add
     // saves straight after filling it, before "yesterday" has re-rendered.
@@ -345,6 +358,7 @@ export function TransactionModal({
       type,
       ...(f.note.trim() ? { note: f.note.trim() } : {}),
       ...(!editing && when ? { occurredAt: when } : {}),
+      ...(!editing && payee ? { upiId: payee } : {}),
     };
     if (foreign) {
       // The server works out the rupees itself from the purchase day's rate;
@@ -355,12 +369,14 @@ export function TransactionModal({
       body.original = null; // switched back to rupees
     }
     let savedId: string;
+    let created: Txn | null = null;
     try {
       if (editing) {
         await updateTransaction(token, editing.id, body);
         savedId = editing.id;
       } else {
-        savedId = (await createTransaction(token, body)).transaction.id;
+        created = (await createTransaction(token, body)).transaction;
+        savedId = created.id;
       }
       if (foreign) void rememberForeignCurrency(currency);
     } catch (e) {
@@ -377,6 +393,7 @@ export function TransactionModal({
       if (plan) await saveSplit(token, savedId, plan);
       else if (editing?.split) await removeSplit(token, savedId);
       notifySuccess();
+      if (opts.announce && created) onLogged?.(created);
       onSaved();
     } catch (e) {
       if (e instanceof AuthError) return onNeedAuth();
@@ -388,6 +405,67 @@ export function TransactionModal({
       );
     } finally {
       setSaving(false);
+    }
+  }
+
+  /**
+   * A payment QR, read by the camera. Everything it holds goes into the form;
+   * the category comes from their history, then the shop's category code,
+   * then (Plus) AI. When nothing is missing it saves straight away and the
+   * toast offers Undo; otherwise the form waits at the gap, so nothing is
+   * logged on a guess. A static shop sticker has no amount, so that's the
+   * usual gap.
+   */
+  async function logFromQr(qr: PaymentQr) {
+    setQrOpen(false);
+    if (!meta) return;
+    const name = qr.name ?? qr.upiId ?? "";
+    const upiMode =
+      meta.paymentModes.find((m) => m.value === "upi" || /upi/i.test(m.label))?.value ??
+      paymentMode;
+    let cat =
+      parseQuickAdd(name, { modes: meta.paymentModes, categories: meta.categories, history })
+        .categoryId ?? categoryFromMcc(qr.mcc, meta.categories);
+    let hint: string | null = cat ? "From the shop's QR" : null;
+    if (!cat && plusAccess && qr.name && ((await hasAiConsent()) || (await requestAiConsent()))) {
+      try {
+        const got = await categorizeReceipt(token, qr.name, qr.note ? [qr.note] : []);
+        if (got.categoryId) {
+          cat = got.categoryId;
+          hint = got.from === "rule" ? "From your rule" : "Picked by AI";
+        }
+      } catch (e) {
+        if (e instanceof AuthError) return onNeedAuth();
+      }
+    }
+    const f: Form = {
+      amount: qr.amount != null ? String(qr.amount) : "",
+      merchant: name,
+      categoryId: cat ?? categoryId,
+      paymentMode: upiMode,
+      day: null,
+      note,
+    };
+    fill(f);
+    setType("debit");
+    setUpiId(qr.upiId);
+    setCategoryHint(hint);
+    // A QR is in rupees; and a receipt's date or another currency left over
+    // from an earlier scan in this sheet would make an unattended save wrong.
+    const clean = currency === HOME.code && !receiptDate && !splitPlan;
+    setCurrency(HOME.code);
+    if (isComplete(f) && clean) {
+      void save(f, { announce: true, upiId: qr.upiId });
+      return;
+    }
+    if (qr.amount == null) {
+      setScanNote(`Paying ${name}. Type the amount to log it.`);
+      setTimeout(() => amountRef.current?.focus(), 350);
+    } else if (!f.categoryId) {
+      setScanNote(`Paying ${name}. Pick a category to log it.`);
+      setPickerOpen(true);
+    } else {
+      setScanNote(`Paying ${name}. Check it, then save.`);
     }
   }
 
@@ -582,6 +660,19 @@ export function TransactionModal({
                   <Ionicons name="trash-outline" size={21} color={C.red} />
                 </Pressable>
               ) : (
+                <>
+                <Pressable
+                  onPress={() => {
+                    tapLight();
+                    setQrOpen(true);
+                  }}
+                  disabled={busy}
+                  hitSlop={8}
+                  accessibilityLabel="Scan a payment QR"
+                  style={({ pressed }) => [styles.qrBtn, pressed && { opacity: 0.6 }]}
+                >
+                  <Ionicons name="qr-code-outline" size={18} color={C.accent} />
+                </Pressable>
                 <Pressable
                   onPress={chooseScanSource}
                   disabled={busy || scanning}
@@ -595,6 +686,7 @@ export function TransactionModal({
                   )}
                   <Text style={styles.scanText}>{scanning ? "Reading…" : "Scan receipt"}</Text>
                 </Pressable>
+                </>
               )}
               <Pressable onPress={onClose} hitSlop={10}>
                 <Ionicons name="close" size={24} color={C.muted} />
@@ -930,6 +1022,12 @@ export function TransactionModal({
               onClose={() => setSplitOpen(false)}
             />
 
+            <QrScanSheet
+              visible={qrOpen}
+              onScanned={(qr) => void logFromQr(qr)}
+              onClose={() => setQrOpen(false)}
+            />
+
             <CurrencyPicker
               visible={currencyOpen}
               selected={currency}
@@ -1068,6 +1166,13 @@ const styles = StyleSheet.create({
   },
   title: { flex: 1, fontSize: 20, fontWeight: "700", color: C.text },
   headerAction: { marginRight: 18 },
+  qrBtn: {
+    borderWidth: 0.5,
+    borderColor: C.border,
+    borderRadius: R.pill,
+    padding: 7,
+    marginRight: 8,
+  },
   scanBtn: {
     flexDirection: "row",
     alignItems: "center",

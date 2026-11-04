@@ -101,6 +101,60 @@ export function flushDelete() {
   void commit(p);
 }
 
+// ── Logged, with undo ────────────────────────────────────────────────────────
+//
+// A QR scan saves without a Save button. The same toast then says "Logged …"
+// for the undo window, and Undo deletes what was just added. Shares the store
+// so the toast shows one thing at a time and the row hides the same way.
+
+type Logged = { txn: Txn; token: string; onUndone: () => void; onFailed: (e: unknown) => void };
+
+let logged: Logged | null = null;
+let loggedTimer: ReturnType<typeof setTimeout> | null = null;
+let loggedSnapshot: Txn | null = null;
+const loggedListeners = new Set<() => void>();
+
+function setLogged(next: Logged | null) {
+  logged = next;
+  loggedSnapshot = next?.txn ?? null;
+  loggedListeners.forEach((l) => l());
+}
+
+export function announceLogged(args: Logged) {
+  if (loggedTimer) clearTimeout(loggedTimer);
+  setLogged(args);
+  loggedTimer = setTimeout(() => {
+    loggedTimer = null;
+    setLogged(null);
+  }, UNDO_MS);
+}
+
+/** Takes back what was just logged: hidden now, deleted on the server. */
+export function undoLogged() {
+  const l = logged;
+  if (!l) return;
+  if (loggedTimer) clearTimeout(loggedTimer);
+  loggedTimer = null;
+  setLogged(null);
+  set({ hidden: withHidden(l.txn.id, true) });
+  deleteTransaction(l.token, l.txn.id)
+    .then(l.onUndone)
+    .catch((e) => {
+      set({ hidden: withHidden(l.txn.id, false) });
+      l.onFailed(e);
+    });
+}
+
+export function useJustLogged(): Txn | null {
+  return useSyncExternalStore(
+    (l) => {
+      loggedListeners.add(l);
+      return () => loggedListeners.delete(l);
+    },
+    () => loggedSnapshot
+  );
+}
+
 export function useHiddenTxnIds(): ReadonlySet<string> {
   return useSyncExternalStore(subscribe, () => snapshot.hidden);
 }
