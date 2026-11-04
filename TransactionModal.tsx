@@ -52,8 +52,10 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import {
   canScanDocuments,
+  canScanLive,
   readReceipt,
   scanReceipt,
+  startLiveScan,
   isSupported as canReadText,
 } from "./modules/receipt-ocr";
 import { parseReceipt, THREE_DECIMALS, type ParsedReceipt } from "./receiptParser";
@@ -62,7 +64,7 @@ import { hasAiConsent, requestAiConsent } from "./aiConsent";
 import { SplitSheet } from "./SplitSheet";
 import { allocate, splitProblem } from "./splitMath";
 import { QrScanSheet } from "./QrScanSheet";
-import { categoryFromMcc, type PaymentQr } from "./upiQr";
+import { categoryFromMcc, parsePaymentQr, type PaymentQr } from "./upiQr";
 
 type Form = {
   amount: string;
@@ -162,6 +164,11 @@ export function TransactionModal({
   const [offerAi, setOfferAi] = useState(false);
   const [aiReading, setAiReading] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  /** This iPhone reads receipts and QR codes straight off the camera feed. */
+  const [liveOk, setLiveOk] = useState(false);
+  useEffect(() => {
+    void canScanLive().then(setLiveOk);
+  }, []);
   /** The payee's UPI ID from a scanned QR, sent with the save. */
   const [upiId, setUpiId] = useState<string | null>(null);
   /** Where a scanned receipt's category came from, said under the field. */
@@ -592,17 +599,7 @@ export function TransactionModal({
     const cat = await applyReceipt(r);
     const today = localDay(new Date());
     const printed = r.date && r.date !== today ? r.date : null;
-    const sure =
-      r.total !== null &&
-      // 0.65 is the floor for a labelled total with a shop, a date and a
-      // currency the receipt names; a total guessed from the largest number
-      // tops out at 0.45.
-      r.confidence >= 0.65 &&
-      !!r.merchant &&
-      (r.currency === null || r.currencySure) &&
-      !splitPlan &&
-      !editing;
-    if (!sure || !cat || !meta) return;
+    if (!readsSure(r) || splitPlan || editing || !cat || !meta) return;
     const f: Form = {
       amount: String(r.total),
       merchant: r.merchant!,
@@ -613,6 +610,52 @@ export function TransactionModal({
     };
     if (!isComplete(f)) return;
     await save(f, { announce: true, currency: r.currency ?? HOME.code, receiptDate: printed });
+  }
+
+  /**
+   * The live scanner: point the camera and wait. A payment QR logs the moment
+   * it's seen. A receipt logs once two readings in a row agree on a sure total
+   * and currency, so one shaky frame can't log a misread digit. Closing it
+   * early keeps the best reading so far in the form.
+   */
+  function scanLiveFeed() {
+    setScanNote(null);
+    setError(null);
+    let done = false;
+    let best: { lines: string[]; confidence: number } | null = null;
+    let lastSure: string | null = null;
+    const scan = startLiveScan({
+      onCode: (data) => {
+        if (done) return;
+        const qr = parsePaymentQr(data);
+        if (!qr) return; // a menu link or a loyalty code; keep looking
+        done = true;
+        scan.stop();
+        void logFromQr(qr);
+      },
+      onLines: (lines) => {
+        if (done || !plusAccess) return;
+        const r = parseReceipt(lines, { recentCurrency });
+        if (r.total !== null && (!best || r.confidence >= best.confidence)) {
+          best = { lines, confidence: r.confidence };
+        }
+        const key = readsSure(r) ? `${r.total} ${r.currency ?? ""}` : null;
+        if (key && key === lastSure) {
+          done = true;
+          scan.stop();
+          setScanning(true);
+          void readAndMaybeLog(lines).finally(() => setScanning(false));
+        }
+        lastSure = key;
+      },
+      onClosed: () => {
+        if (done) return;
+        done = true;
+        // Saw a receipt but needs Plus to read it; or saw enough to fill in.
+        if (best && !plusAccess) showPaywall("Scanning receipts is part of paisa. plus.");
+        else if (best) void readAndMaybeLog(best.lines);
+      },
+    });
   }
 
   function applyReceipt(r: ParsedReceipt, fromAi = false): Promise<string | null> {
@@ -753,6 +796,27 @@ export function TransactionModal({
                   <Ionicons name="trash-outline" size={21} color={C.red} />
                 </Pressable>
               ) : (
+                liveOk ? (
+                <Pressable
+                  onPress={() => {
+                    tapLight();
+                    scanLiveFeed();
+                  }}
+                  onLongPress={chooseScanSource}
+                  accessibilityLabel="Scan a receipt or payment QR"
+                  accessibilityHint="Press and hold to choose a photo instead"
+                  disabled={busy || scanning}
+                  hitSlop={8}
+                  style={({ pressed }) => [styles.scanBtn, pressed && { opacity: 0.6 }]}
+                >
+                  {scanning ? (
+                    <ActivityIndicator size="small" color={C.accent} />
+                  ) : (
+                    <Ionicons name="scan-outline" size={16} color={C.accent} />
+                  )}
+                  <Text style={styles.scanText}>{scanning ? "Reading…" : "Scan"}</Text>
+                </Pressable>
+                ) : (
                 <>
                 <Pressable
                   onPress={() => {
@@ -782,6 +846,7 @@ export function TransactionModal({
                   <Text style={styles.scanText}>{scanning ? "Reading…" : "Scan receipt"}</Text>
                 </Pressable>
                 </>
+                )
               )}
               <Pressable onPress={onClose} hitSlop={10}>
                 <Ionicons name="close" size={24} color={C.muted} />
@@ -1134,6 +1199,21 @@ export function TransactionModal({
         </KeyboardAvoidingView>
       </View>
     </Modal>
+  );
+}
+
+/**
+ * Sure enough to log without anyone checking: a labelled total, a shop, and a
+ * currency the receipt names (or none at all, meaning rupees). 0.65 is the
+ * floor for a labelled total with a shop, a date and a named currency; a total
+ * guessed from the largest number tops out at 0.45.
+ */
+function readsSure(r: ParsedReceipt): boolean {
+  return (
+    r.total !== null &&
+    r.confidence >= 0.65 &&
+    !!r.merchant &&
+    (r.currency === null || r.currencySure)
   );
 }
 

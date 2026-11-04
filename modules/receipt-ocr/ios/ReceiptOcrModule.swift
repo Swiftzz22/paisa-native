@@ -13,13 +13,17 @@ import VisionKit
  * on its side. This also returns where each piece of text sits, so the JS
  * side can put "TOTAL" and "S$14.93" back on the same line.
  *
- * Two ways in: a photo already taken (`recognize`), or Apple's document
- * camera (`scanDocument`), which finds the receipt in view, takes the shot
- * by itself once it's steady, and crops and flattens it before it's read.
+ * Three ways in: a photo already taken (`recognize`); Apple's document
+ * camera (`scanDocument`), which takes the shot by itself once the receipt is
+ * steady; and the live scanner (`startLiveScan`, iOS 16+), which reads text
+ * and QR codes straight off the camera feed, with no photo at all, and keeps
+ * reporting what it sees until the app has enough to log.
  */
 public class ReceiptOcrModule: Module {
   /** The scan in progress: its promise, and the delegate the camera holds weakly. */
   private var scanning: (promise: Promise, delegate: ScanDelegate)?
+  /** The live scanner on screen (a LiveScanner; typed loosely for iOS 15). */
+  private var live: AnyObject?
 
   public func definition() -> ModuleDefinition {
     Name("ReceiptOcr")
@@ -29,6 +33,64 @@ public class ReceiptOcrModule: Module {
       // The document camera needs a real camera; false in the simulator.
       "canScanDocuments": VNDocumentCameraViewController.isSupported,
     ])
+
+    Events("onLiveText", "onLiveCode", "onLiveClosed")
+
+    // Apple's live scanner is main-thread only, so everything touching it
+    // runs in a main-actor task.
+    AsyncFunction("canScanLive") { (promise: Promise) in
+      guard #available(iOS 16.0, *) else {
+        promise.resolve(false)
+        return
+      }
+      Task { @MainActor in
+        promise.resolve(DataScannerViewController.isSupported && DataScannerViewController.isAvailable)
+      }
+    }
+
+    // Opens the live scanner and resolves once it's on screen. What it sees
+    // arrives as onLiveText ({ blocks }) and onLiveCode ({ data }) events;
+    // onLiveClosed fires when it goes away, however that happens.
+    AsyncFunction("startLiveScan") { (promise: Promise) in
+      guard #available(iOS 16.0, *) else {
+        promise.reject("ERR_RECEIPT_SCANNER", "Live scanning needs iOS 16 or later.")
+        return
+      }
+      Task { @MainActor in
+        guard self.live == nil else {
+          promise.reject("ERR_RECEIPT_SCANNER", "The scanner is already open.")
+          return
+        }
+        guard DataScannerViewController.isSupported, DataScannerViewController.isAvailable else {
+          promise.reject("ERR_RECEIPT_SCANNER", "Live scanning isn't available on this iPhone.")
+          return
+        }
+        guard let presenter = self.appContext?.utilities?.currentViewController() else {
+          promise.reject("ERR_RECEIPT_SCANNER", "Couldn't open the camera.")
+          return
+        }
+        let scanner = LiveScanner(
+          onText: { [weak self] blocks in self?.sendEvent("onLiveText", ["blocks": blocks]) },
+          onCode: { [weak self] data in self?.sendEvent("onLiveCode", ["data": data]) },
+          onClosed: { [weak self] in
+            self?.live = nil
+            self?.sendEvent("onLiveClosed", [:])
+          }
+        )
+        self.live = scanner
+        scanner.present(from: presenter)
+        promise.resolve()
+      }
+    }
+
+    AsyncFunction("stopLiveScan") { (promise: Promise) in
+      Task { @MainActor in
+        if #available(iOS 16.0, *), let scanner = self.live as? LiveScanner {
+          scanner.close()
+        }
+        promise.resolve()
+      }
+    }
 
     // Each result: the text, its box in 0–1 image coordinates with the origin
     // at the bottom left (Vision's convention), and Vision's confidence.
@@ -150,6 +212,115 @@ final class ScanDelegate: NSObject, VNDocumentCameraViewControllerDelegate {
   func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
     controller.dismiss(animated: true)
     done(.failed(error))
+  }
+}
+
+/**
+ * Apple's live scanner in a full-screen sheet with a close button. Reports
+ * every QR it sees, and the text in view about twice a second, as blocks in
+ * the same shape `recognize` returns.
+ */
+@available(iOS 16.0, *)
+@MainActor
+final class LiveScanner: NSObject, DataScannerViewControllerDelegate {
+  private let scanner: DataScannerViewController
+  private let nav: UINavigationController
+  private let onText: ([[String: Any]]) -> Void
+  private let onCode: (String) -> Void
+  private let onClosed: () -> Void
+  private var lastText = Date.distantPast
+  private var lastCode: String?
+  private var closed = false
+
+  init(
+    onText: @escaping ([[String: Any]]) -> Void,
+    onCode: @escaping (String) -> Void,
+    onClosed: @escaping () -> Void
+  ) {
+    scanner = DataScannerViewController(
+      recognizedDataTypes: [.text(), .barcode(symbologies: [.qr])],
+      qualityLevel: .accurate,
+      recognizesMultipleItems: true,
+      isHighFrameRateTrackingEnabled: false,
+      isPinchToZoomEnabled: true,
+      isGuidanceEnabled: true,
+      isHighlightingEnabled: true
+    )
+    nav = UINavigationController(rootViewController: scanner)
+    self.onText = onText
+    self.onCode = onCode
+    self.onClosed = onClosed
+    super.init()
+    scanner.delegate = self
+    scanner.title = "Hold the receipt or QR in view"
+    scanner.navigationItem.leftBarButtonItem = UIBarButtonItem(
+      systemItem: .close,
+      primaryAction: UIAction { [weak self] _ in self?.close() }
+    )
+    nav.modalPresentationStyle = .fullScreen
+  }
+
+  func present(from presenter: UIViewController) {
+    presenter.present(nav, animated: true) { [weak self] in
+      guard let self else { return }
+      do {
+        try self.scanner.startScanning()
+      } catch {
+        self.close()
+      }
+    }
+  }
+
+  func close() {
+    guard !closed else { return }
+    closed = true
+    scanner.stopScanning()
+    nav.dismiss(animated: true)
+    onClosed()
+  }
+
+  func dataScanner(_ dataScanner: DataScannerViewController, didAdd addedItems: [RecognizedItem], allItems: [RecognizedItem]) {
+    report(allItems)
+  }
+
+  func dataScanner(_ dataScanner: DataScannerViewController, didUpdate updatedItems: [RecognizedItem], allItems: [RecognizedItem]) {
+    report(allItems)
+  }
+
+  func dataScanner(_ dataScanner: DataScannerViewController, becameUnavailableWithError error: DataScannerViewController.ScanningUnavailable) {
+    close()
+  }
+
+  private func report(_ items: [RecognizedItem]) {
+    guard !closed else { return }
+    for item in items {
+      if case .barcode(let code) = item, let payload = code.payloadStringValue, payload != lastCode {
+        lastCode = payload
+        onCode(payload)
+      }
+    }
+    let now = Date()
+    guard now.timeIntervalSince(lastText) > 0.4 else { return }
+    lastText = now
+    let size = scanner.view.bounds.size
+    guard size.width > 0, size.height > 0 else { return }
+    // The scanner gives corners in view points from the top left; flip to
+    // Vision's 0–1 from the bottom left so the same row grouping applies.
+    let blocks: [[String: Any]] = items.compactMap { item in
+      guard case .text(let text) = item else { return nil }
+      let b = text.bounds
+      let xs = [b.topLeft.x, b.topRight.x, b.bottomLeft.x, b.bottomRight.x]
+      let ys = [b.topLeft.y, b.topRight.y, b.bottomLeft.y, b.bottomRight.y]
+      guard let minX = xs.min(), let maxX = xs.max(), let minY = ys.min(), let maxY = ys.max() else { return nil }
+      return [
+        "text": text.transcript,
+        "x": Double(minX / size.width),
+        "y": Double(1 - maxY / size.height),
+        "width": Double((maxX - minX) / size.width),
+        "height": Double((maxY - minY) / size.height),
+      ]
+    }
+    if !blocks.isEmpty { onText(blocks) }
   }
 }
 

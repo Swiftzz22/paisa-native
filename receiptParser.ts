@@ -151,6 +151,13 @@ const CURRENCY_MARKS: [RegExp, string][] = [
   [/\bnz\$|\bnzd\b|new zealand/i, "NZD"],
   [/\bc\$|\bca\$|\bcad\b|canada/i, "CAD"],
   [/\bus\$|\busd\b/i, "USD"],
+  // Where the shop is, for receipts that never print a currency at all: an
+  // American address ends "TAMPA FL 33604", a state code and a 5-digit ZIP.
+  // Case matters here, so "de 28013" in a Spanish street isn't Delaware.
+  [/\b(?:A[KLRZ]|C[AOT]|D[CE]|FL|GA|HI|I[ADLN]|K[SY]|LA|M[ADEINOST]|N[CDEHJMVY]|O[HKR]|PA|RI|S[CD]|T[NX]|UT|V[AT]|W[AIVY]),?\s+\d{5}(?:-\d{4})?\b/, "USD"],
+  // A UK postcode ("SW1A 1AA") and a Canadian one ("M5V 2T6").
+  [/\b[A-Z]{1,2}\d[A-Z\d]?\s\d[A-Z]{2}\b/, "GBP"],
+  [/\b[ABCEGHJ-NPRSTVXY]\d[A-Z]\s?\d[A-Z]\d\b/, "CAD"],
   [/€|\beur\b/i, "EUR"],
   [/£|\bgbp\b/i, "GBP"],
   [/฿|\bthb\b|\bbaht\b/i, "THB"],
@@ -189,7 +196,9 @@ function detectCurrency(
   // "USD accepted" once, but it says S$ on every line.
   const counts = new Map<string, number>();
   for (const [re, code] of CURRENCY_MARKS) {
-    const n = (text.match(new RegExp(re.source, "gi")) ?? []).length;
+    // Each pattern's own flags, plus "g" to count: the address patterns are
+    // case-sensitive on purpose.
+    const n = (text.match(new RegExp(re.source, re.flags.replace("g", "") + "g")) ?? []).length;
     if (n) counts.set(code, (counts.get(code) ?? 0) + n);
   }
   if (counts.size) {
@@ -259,8 +268,10 @@ function detectDate(lines: string[], currency: string | null, today: Date): stri
       if (v) candidates.push(v);
     }
   }
-  // A receipt from the future is a misread; one from years ago almost always is.
-  const floor = new Date(today.getTime() - 400 * 86_400_000).toISOString().slice(0, 10);
+  // A receipt from the future is a misread. An old one may be real (someone
+  // logging a shoebox of receipts), and its date sets the exchange rate, so
+  // only a date past any plausible keeping is thrown out.
+  const floor = new Date(today.getTime() - 20 * 365 * 86_400_000).toISOString().slice(0, 10);
   return candidates.find((c) => c <= latest && c >= floor) ?? null;
 }
 
