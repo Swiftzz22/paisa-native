@@ -38,6 +38,21 @@ export type ParseHints = {
   today?: Date;
 };
 
+/**
+ * A line as the label patterns see it: lower case, accents off, "đ" as "d".
+ * Vietnamese labels ("Tổng tiền hóa đơn") then match the same pattern whether
+ * the phone read the accents or dropped them ("Tong tien hoa don"), which it
+ * often does on faded thermal paper. Only labels are matched this way; amounts
+ * and names are still read from the line as printed.
+ */
+function fold(line: string): string {
+  return line
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[đĐ]/g, "d")
+    .toLowerCase();
+}
+
 // ─── Amounts ────────────────────────────────────────────────────────────────
 
 /**
@@ -120,8 +135,8 @@ function trailingAmount(line: string, decimals: number): number | null {
 /** True for a line that is nothing but a price ("450.00", "₹ 1,299", "S$12.50"). */
 function isAmountOnly(line: string, decimals: number): boolean {
   const stripped = line
-    .replace(/(?:rs\.?|inr|usd|sgd|aed|eur|gbp|thb|myr|idr|jpy|kwd|bhd|omr|jod|us\$|s\$|hk\$|a\$|rm|rp|kd|bd|jd)/gi, "")
-    .replace(/[₹$€£¥฿₩₫₱:\s-]/g, "");
+    .replace(/(?:rs\.?|inr|usd|sgd|aed|eur|gbp|thb|myr|idr|jpy|kwd|bhd|omr|jod|vn[dđ]|us\$|s\$|hk\$|a\$|rm|rp|kd|bd|jd)/gi, "")
+    .replace(/[₹$€£¥฿₩₫₱đĐ:\s-]/g, "");
   return /^\d[\d.,]*$/.test(stripped) && amountsIn(line, decimals).length === 1;
 }
 
@@ -149,7 +164,9 @@ const CURRENCY_MARKS: [RegExp, string][] = [
   [/\bomr\b|\br\.o\.?\s?\d|\boman\b|muscat/i, "OMR"],
   [/\bjod\b|\bj\.?d\.?\s?\d|jordan|amman/i, "JOD"],
   [/₩|\bkrw\b/i, "KRW"],
-  [/₫|\bvnd\b|vietnam/i, "VND"],
+  // Receipts there mostly write the letter đ beside the number ("đ391.000",
+  // "4,465,825 đ") rather than the ₫ sign, and name a city, not the country.
+  [/₫|\bvn[dđ]\b|\d\s?đ(?![a-zà-ỹ])|đ\s?\d|vi[eệ]t\s?nam|h[àa]\s?n[ộo]i|hanoi|h[ồo] ch[íi] minh|s[àa]i g[òo]n|saigon|[đd][àa] n[ẵa]ng/i, "VND"],
   [/₱|\bphp\b|philippines/i, "PHP"],
   [/円|\bjpy\b|japan|tokyo|osaka/i, "JPY"],
   [/元|\bcny\b|\brmb\b/i, "CNY"],
@@ -274,12 +291,12 @@ function detectMerchant(lines: string[]): string | null {
 
 /** Ranked: an explicit grand total beats a bare "total". */
 const TOTAL_LABELS: [RegExp, number][] = [
-  [/grand\s*total|total\s*payable|amount\s*payable|net\s*payable|amount\s*due|balance\s*due|total\s*due/i, 3],
-  [/net\s*(?:amount|total)|total\s*amount|bill\s*amount|total\s*\(?(?:incl|inc)/i, 2],
-  [/^\s*total\b|\btotal\s*[:₹$€£¥฿]|\btotal\s*$|合計|お会計|总计|합계/i, 1],
+  [/grand\s*total|total\s*payable|amount\s*payable|net\s*payable|amount\s*due|balance\s*due|total\s*due|tong tien hoa don|tong tien thanh toan|tong thanh toan|so tien (?:phai |can )?thanh toan|khach (?:phai|can) tra/i, 3],
+  [/net\s*(?:amount|total)|total\s*amount|bill\s*amount|total\s*\(?(?:incl|inc)|tong cong(?! truoc)/i, 2],
+  [/^\s*total\b|\btotal\s*[:₹$€£¥฿]|\btotal\s*$|合計|お会計|总计|합계|^\s*tong\s*(?::|d?\s?\d|$)/i, 1],
 ];
 const NOT_TOTAL =
-  /sub\s*-?\s*total|total\s*(?:tax|gst|vat|qty|quantity|items?|savings|discount)|tax\s*total|小計|小计/i;
+  /sub\s*-?\s*total|total\s*(?:tax|gst|vat|qty|quantity|items?|savings|discount)|tax\s*total|小計|小计|tong so luong|tong so mat hang|tong giam gia|truoc giam gia/i;
 
 const EXTRA_LABELS: [RegExp, string][] = [
   [/\bcgst\b/i, "CGST"],
@@ -289,14 +306,14 @@ const EXTRA_LABELS: [RegExp, string][] = [
   [/\bvat\b|\btva\b|\bmwst\b|\biva\b|消費税/i, "VAT"],
   [/service\s*(?:charge|chg|tax)|\bsvc\b|\bs\/c\b/i, "Service charge"],
   [/\btip\b|gratuity/i, "Tip"],
-  [/\btax\b/i, "Tax"],
+  [/\btax\b|\bthue\b/i, "Tax"],
   [/round\s*(?:off|ing)/i, "Round off"],
-  [/discount|\bdisc\b|savings/i, "Discount"],
+  [/discount|\bdisc\b|savings|giam gia/i, "Discount"],
 ];
 
 /** Lines that are about paying, not about what was bought. */
 const PAYMENT =
-  /cash|change|tender|paid|card|visa|master|amex|upi|paytm|gpay|phonepe|balance|refund|approved|auth|ref\b|txn|terminal|rrn|\bmid\b|\btid\b/i;
+  /cash|change|tender|paid|card|visa|master|amex|upi|paytm|gpay|phonepe|balance|refund|approved|auth|ref\b|txn|terminal|rrn|\bmid\b|\btid\b|tien mat|tien thoi|tien thua|tien khach (?:dua|tra)|the tin dung|the ghi no|chuyen khoan/i;
 
 /** The amount for a label line: on the same line, or alone on the next one. */
 function amountFor(lines: string[], i: number, decimals: number): number | null {
@@ -314,9 +331,9 @@ function detectTotal(
 ): { total: number | null; at: number; rank: number } {
   let best = { total: null as number | null, at: -1, rank: 0 };
   lines.forEach((line, i) => {
-    if (NOT_TOTAL.test(line)) return;
+    if (NOT_TOTAL.test(fold(line))) return;
     for (const [re, rank] of TOTAL_LABELS) {
-      if (!re.test(line)) continue;
+      if (!re.test(fold(line))) continue;
       const amount = amountFor(lines, i, decimals);
       // Higher rank wins; at equal rank the later line wins, since a running
       // "total" above the tax is followed by the real one below it.
@@ -337,10 +354,11 @@ function detectExtras(
   const out: { label: string; amount: number }[] = [];
   for (let i = 0; i < end; i++) {
     const line = lines[i];
-    if (NOT_TOTAL.test(line) && !/tax|gst|vat/i.test(line)) continue;
-    if (/total/i.test(line) && !/tax|gst|vat/i.test(line)) continue;
+    const f = fold(line);
+    if (NOT_TOTAL.test(f) && !/tax|gst|vat|thue/i.test(f)) continue;
+    if (/total|\btong\b/i.test(f) && !/tax|gst|vat|thue/i.test(f)) continue;
     for (const [re, label] of EXTRA_LABELS) {
-      if (!re.test(line)) continue;
+      if (!re.test(fold(line))) continue;
       const amount = amountFor(lines, i, decimals);
       if (amount !== null && amount !== 0) {
         out.push({ label, amount: label === "Discount" ? -Math.abs(amount) : amount });
@@ -383,10 +401,10 @@ function detectItems(
 ): ReceiptItem[] {
   const items: ReceiptItem[] = [];
   const isLabelish = (s: string) =>
-    PAYMENT.test(s) ||
-    NOT_TOTAL.test(s) ||
-    EXTRA_LABELS.some(([re]) => re.test(s)) ||
-    /total|qty|item|price|amount|rate|description|^\s*s\.?\s*no/i.test(s);
+    PAYMENT.test(fold(s)) ||
+    NOT_TOTAL.test(fold(s)) ||
+    EXTRA_LABELS.some(([re]) => re.test(fold(s))) ||
+    /total|\btong\b|qty|item|price|amount|rate|description|^\s*s\.?\s*no/i.test(fold(s));
 
   for (let i = start; i < end; i++) {
     const line = lines[i].trim();
@@ -462,7 +480,7 @@ export function parseReceipt(rawLines: string[], hints: ParseHints = {}): Parsed
       total = roundMoney(itemsSum + extrasSum);
     } else {
       const amounts = lines
-        .filter((l) => !PAYMENT.test(l))
+        .filter((l) => !PAYMENT.test(fold(l)))
         .flatMap((l) => amountsIn(l, decimals))
         .filter((n) => n > 0);
       total = amounts.length ? Math.max(...amounts) : null;
