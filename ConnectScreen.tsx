@@ -7,11 +7,13 @@ import {
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { C, R } from "./theme";
 import { NightBackground } from "./NightBackground";
+import { FeatureCollage } from "./FeatureCollage";
 import { API_BASE, clearToken } from "./api";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { signInWithGoogle } from "./googleSignIn";
@@ -31,6 +33,10 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
   // Only offered where iOS actually supports it, so the button never appears
   // as something that cannot work.
   const [appleReady, setAppleReady] = useState(false);
+  // Where the sign-in block starts, so the collage fills exactly the space
+  // above it and fades out just as the text begins.
+  const [contentTop, setContentTop] = useState(0);
+  const { width } = useWindowDimensions();
 
   useEffect(() => {
     let alive = true;
@@ -98,73 +104,76 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
     <NightBackground grid>
       <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
         <View style={styles.body}>
-          <View style={styles.logo}>
-            <Text style={styles.logoText}>₹</Text>
-          </View>
-          <Text style={styles.brand}>
-            paisa<Text style={{ color: C.accent }}>.</Text>
-          </Text>
-          <Text style={styles.subtitle}>
-            Sign in to pick up where your spending left off.
-          </Text>
+          {contentTop > 0 ? <FeatureCollage width={width} height={contentTop + 28} /> : null}
+          <View onLayout={(e) => setContentTop(e.nativeEvent.layout.y)}>
+            <View style={styles.logo}>
+              <Text style={styles.logoText}>₹</Text>
+            </View>
+            <Text style={styles.brand}>
+              paisa<Text style={{ color: C.accent }}>.</Text>
+            </Text>
+            <Text style={styles.subtitle}>
+              Sign in to pick up where your spending left off.
+            </Text>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          {/* Apple first and in Apple's own styling. Guideline 4.8 requires an
-              equivalent privacy-preserving option wherever a third-party login
-              is offered, and it is also the only way an App Review tester can
-              sign in at all — they have an Apple ID, not the owner's Google
-              account. */}
-          {appleReady ? (
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={
-                AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
-              }
-              buttonStyle={
-                AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-              }
-              cornerRadius={R.control}
-              style={styles.appleButton}
-              onPress={busy ? () => {} : signInApple}
-            />
-          ) : null}
+            {/* Apple first and in Apple's own styling. Guideline 4.8 requires an
+                equivalent privacy-preserving option wherever a third-party login
+                is offered, and it is also the only way an App Review tester can
+                sign in at all — they have an Apple ID, not the owner's Google
+                account. */}
+            {appleReady ? (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={
+                  AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN
+                }
+                buttonStyle={
+                  AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                }
+                cornerRadius={R.control}
+                style={styles.appleButton}
+                onPress={busy ? () => {} : signInApple}
+              />
+            ) : null}
 
-          <Pressable
-            style={({ pressed }) => [
-              styles.button,
-              (busy || pressed) && { opacity: 0.85 },
-            ]}
-            onPress={signIn}
-            disabled={busy}
-          >
-            {busy ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Ionicons name="logo-google" size={18} color="#fff" />
-                <Text style={styles.buttonText}>Continue with Google</Text>
-              </>
-            )}
-          </Pressable>
-
-          <Text style={styles.reassure}>
-            paisa. only ever reads. It can never move money or send anything.
-          </Text>
-
-          <View style={styles.legalRow}>
             <Pressable
-              onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
-              style={({ pressed }) => pressed && { opacity: 0.6 }}
+              style={({ pressed }) => [
+                styles.button,
+                (busy || pressed) && { opacity: 0.85 },
+              ]}
+              onPress={signIn}
+              disabled={busy}
             >
-              <Text style={styles.privacy}>Privacy policy</Text>
+              {busy ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={18} color="#fff" />
+                  <Text style={styles.buttonText}>Continue with Google</Text>
+                </>
+              )}
             </Pressable>
-            <Text style={styles.legalDot}>·</Text>
-            <Pressable
-              onPress={() => Linking.openURL(`${API_BASE}/terms`)}
-              style={({ pressed }) => pressed && { opacity: 0.6 }}
-            >
-              <Text style={styles.privacy}>Terms of use</Text>
-            </Pressable>
+
+            <Text style={styles.reassure}>
+              paisa. only ever reads. It can never move money or send anything.
+            </Text>
+
+            <View style={styles.legalRow}>
+              <Pressable
+                onPress={() => Linking.openURL(`${API_BASE}/privacy`)}
+                style={({ pressed }) => pressed && { opacity: 0.6 }}
+              >
+                <Text style={styles.privacy}>Privacy policy</Text>
+              </Pressable>
+              <Text style={styles.legalDot}>·</Text>
+              <Pressable
+                onPress={() => Linking.openURL(`${API_BASE}/terms`)}
+                style={({ pressed }) => pressed && { opacity: 0.6 }}
+              >
+                <Text style={styles.privacy}>Terms of use</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </SafeAreaView>
@@ -174,7 +183,8 @@ export function ConnectScreen({ onConnected }: { onConnected: () => void }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  body: { flex: 1, paddingHorizontal: 30, justifyContent: "center" },
+  // Anchored low, leaving the top of the screen to the feature collage.
+  body: { flex: 1, paddingHorizontal: 30, paddingBottom: 8, justifyContent: "flex-end" },
   logo: {
     width: 60,
     height: 60,
