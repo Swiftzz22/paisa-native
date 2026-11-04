@@ -50,7 +50,12 @@ import {
   rememberForeignCurrency,
 } from "./currency";
 import * as ImagePicker from "expo-image-picker";
-import { readReceipt, isSupported as canReadText } from "./modules/receipt-ocr";
+import {
+  canScanDocuments,
+  readReceipt,
+  scanReceipt,
+  isSupported as canReadText,
+} from "./modules/receipt-ocr";
 import { parseReceipt, THREE_DECIMALS, type ParsedReceipt } from "./receiptParser";
 import { showPaywall } from "./paywallBus";
 import { hasAiConsent, requestAiConsent } from "./aiConsent";
@@ -334,14 +339,26 @@ export function TransactionModal({
 
   async function save(
     f: Form = current,
-    opts: { announce?: boolean; upiId?: string | null } = {}
+    opts: {
+      announce?: boolean;
+      upiId?: string | null;
+      /** A scan saving by itself, before its currency and date have rendered. */
+      currency?: string;
+      receiptDate?: string | null;
+    } = {}
   ) {
     if (!isComplete(f) || busy) return;
     const payee = opts.upiId ?? upiId;
+    const cur = opts.currency ?? currency;
+    const isForeign = cur !== HOME.code;
     const bill = parseFloat(f.amount);
     // Worked out from the form being saved, not the last render: quick add
     // saves straight after filling it, before "yesterday" has re-rendered.
-    const when = receiptDate ? occurredAt : occurredAtFor(f.day);
+    const printed = opts.receiptDate !== undefined ? opts.receiptDate : receiptDate;
+    const when = printed
+      ? // Local noon, on the minute: the server reads that as "date only".
+        new Date(`${printed}T12:00:00`).toISOString()
+      : occurredAtFor(f.day);
     const plan = type === "debit" ? splitPlan : null;
     const planProblem = plan ? splitProblem(plan, bill) : null;
     if (planProblem) {
@@ -360,10 +377,10 @@ export function TransactionModal({
       ...(!editing && when ? { occurredAt: when } : {}),
       ...(!editing && payee ? { upiId: payee } : {}),
     };
-    if (foreign) {
+    if (isForeign) {
       // The server works out the rupees itself from the purchase day's rate;
       // `amount` still has to be present and positive to pass validation.
-      body.original = { amount: bill, currency };
+      body.original = { amount: bill, currency: cur };
       body.tzOffset = tzOffsetMinutes();
     } else if (editing?.original) {
       body.original = null; // switched back to rupees
@@ -378,7 +395,7 @@ export function TransactionModal({
         created = (await createTransaction(token, body)).transaction;
         savedId = created.id;
       }
-      if (foreign) void rememberForeignCurrency(currency);
+      if (isForeign) void rememberForeignCurrency(cur);
     } catch (e) {
       if (e instanceof AuthError) return onNeedAuth();
       notifyError();
@@ -469,6 +486,40 @@ export function TransactionModal({
     }
   }
 
+  /**
+   * Tap: Apple's document camera, which finds the receipt and takes the shot
+   * by itself. Press and hold (or a build without it): the old choice of a
+   * photo or the library.
+   */
+  function startReceiptScan() {
+    if (!plusAccess) {
+      showPaywall("Scanning receipts is part of paisa. plus.");
+      return;
+    }
+    if (canScanDocuments) void scanLive();
+    else chooseScanSource();
+  }
+
+  async function scanLive() {
+    setScanNote(null);
+    setError(null);
+    let lines: string[] | null;
+    try {
+      lines = await scanReceipt();
+    } catch (e) {
+      notifyError();
+      setScanNote(e instanceof Error ? e.message : "Couldn't open the scanner.");
+      return;
+    }
+    if (!lines) return; // closed without scanning
+    setScanning(true);
+    try {
+      await readAndMaybeLog(lines);
+    } finally {
+      setScanning(false);
+    }
+  }
+
   function chooseScanSource() {
     if (!plusAccess) {
       showPaywall("Scanning receipts is part of paisa. plus.");
@@ -519,9 +570,7 @@ export function TransactionModal({
     setScanNote(null);
     setError(null);
     try {
-      const lines = await readReceipt(picked.assets[0].uri);
-      setOcrLines(lines);
-      applyReceipt(parseReceipt(lines, { recentCurrency }));
+      await readAndMaybeLog(await readReceipt(picked.assets[0].uri));
     } catch {
       notifyError();
       setScanNote("Couldn't read that photo. Try again in better light, or type it in.");
@@ -530,7 +579,43 @@ export function TransactionModal({
     }
   }
 
-  function applyReceipt(r: ParsedReceipt, fromAi = false) {
+  /**
+   * Fill the form from what was read, and when the reading is sure of
+   * everything, save it there and then with Undo on the toast, the same as a
+   * QR. "Sure" means a labelled total that adds up or reads clearly, a
+   * currency the receipt names, a shop and a category. Anything less waits in
+   * the form for a glance, which is better than a wrong amount logged quietly.
+   */
+  async function readAndMaybeLog(lines: string[]) {
+    setOcrLines(lines);
+    const r = parseReceipt(lines, { recentCurrency });
+    const cat = await applyReceipt(r);
+    const today = localDay(new Date());
+    const printed = r.date && r.date !== today ? r.date : null;
+    const sure =
+      r.total !== null &&
+      // 0.65 is the floor for a labelled total with a shop, a date and a
+      // currency the receipt names; a total guessed from the largest number
+      // tops out at 0.45.
+      r.confidence >= 0.65 &&
+      !!r.merchant &&
+      (r.currency === null || r.currencySure) &&
+      !splitPlan &&
+      !editing;
+    if (!sure || !cat || !meta) return;
+    const f: Form = {
+      amount: String(r.total),
+      merchant: r.merchant!,
+      categoryId: cat,
+      paymentMode: paymentMode ?? meta.paymentModes[0]?.value ?? null,
+      day: null,
+      note,
+    };
+    if (!isComplete(f)) return;
+    await save(f, { announce: true, currency: r.currency ?? HOME.code, receiptDate: printed });
+  }
+
+  function applyReceipt(r: ParsedReceipt, fromAi = false): Promise<string | null> {
     setReceipt(r);
     setReceiptFromAi(fromAi);
     // Offer help only where the rules struggled, and never twice.
@@ -541,7 +626,10 @@ export function TransactionModal({
     if (r.currency) setCurrency(r.currency);
     const today = localDay(new Date());
     setReceiptDate(r.date && r.date !== today ? r.date : null);
-    if (r.merchant && !categoryRef.current) void fileReceipt(r.merchant, r.items.map((i) => i.name));
+    const filing =
+      r.merchant && !categoryRef.current
+        ? fileReceipt(r.merchant, r.items.map((i) => i.name))
+        : Promise.resolve(categoryRef.current);
 
     // Say what to check, not just that it worked.
     if (r.total === null) {
@@ -551,7 +639,7 @@ export function TransactionModal({
           ? "Couldn't find a total even with AI. Type the amount in."
           : "Couldn't find a total on that receipt. Type the amount in."
       );
-      return;
+      return filing;
     }
     notifySuccess();
     if (fromAi) {
@@ -563,6 +651,7 @@ export function TransactionModal({
     } else {
       setScanNote("Filled in from the receipt.");
     }
+    return filing;
   }
 
   /**
@@ -572,8 +661,8 @@ export function TransactionModal({
    * Never over a category someone has already chosen, and any failure (no
    * consent, offline, the route not live yet) just leaves the field to them.
    */
-  async function fileReceipt(name: string, items: string[]) {
-    if (!meta) return;
+  async function fileReceipt(name: string, items: string[]): Promise<string | null> {
+    if (!meta) return null;
     const local = parseQuickAdd(name, {
       modes: meta.paymentModes,
       categories: meta.categories,
@@ -582,18 +671,22 @@ export function TransactionModal({
     if (local.categoryId) {
       setCategoryId((now) => now ?? local.categoryId);
       setCategoryHint(local.categoryFrom === "history" ? "Same as last time" : null);
-      return;
+      return categoryRef.current ?? local.categoryId;
     }
-    if (!plusAccess) return;
+    if (!plusAccess) return null;
     // Asked once; after that it's remembered. Someone who said no isn't nagged.
-    if (!(await hasAiConsent()) && !(await requestAiConsent())) return;
+    if (!(await hasAiConsent()) && !(await requestAiConsent())) return null;
     try {
       const got = await categorizeReceipt(token, name, items);
-      if (!got.categoryId || categoryRef.current) return;
+      // Someone picked one by hand while the answer was on its way: theirs wins.
+      if (categoryRef.current) return categoryRef.current;
+      if (!got.categoryId) return null;
       setCategoryId(got.categoryId);
       setCategoryHint(got.from === "rule" ? "From your rule" : "Picked by AI from the receipt");
+      return got.categoryId;
     } catch (e) {
       if (e instanceof AuthError) onNeedAuth();
+      return null;
     }
   }
 
@@ -674,7 +767,9 @@ export function TransactionModal({
                   <Ionicons name="qr-code-outline" size={18} color={C.accent} />
                 </Pressable>
                 <Pressable
-                  onPress={chooseScanSource}
+                  onPress={startReceiptScan}
+                  onLongPress={chooseScanSource}
+                  accessibilityHint="Press and hold to choose a photo instead"
                   disabled={busy || scanning}
                   hitSlop={8}
                   style={({ pressed }) => [styles.scanBtn, pressed && { opacity: 0.6 }]}
